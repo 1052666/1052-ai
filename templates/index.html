@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1052 AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/custom-ui.css">
+    <link rel="stylesheet" href="/static/tool-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">1052 AI</h2>
+                <div class="sidebar-controls">
+                    <button id="new-chat-btn" class="icon-btn" title="新对话">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                    <button id="toggle-sidebar-btn" class="icon-btn" title="收起侧边栏">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="conversations-list" id="conversations-list">
+                <!-- Conversation items will be injected here -->
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="/settings" class="settings-btn" id="settings-link">
+                    <i class="fas fa-cog"></i> <span class="btn-text">设置</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Chat Area -->
+        <div class="main-chat">
+            <div class="chat-header" id="chat-header">
+                <span id="current-chat-title">选择或创建一个对话</span>
+            </div>
+            
+            <div class="chat-messages" id="chat-messages">
+                <!-- Messages will appear here -->
+                <div class="welcome-message">
+                    <i class="fas fa-robot fa-3x"></i>
+                    <p>欢迎使用 AI 聊天助手</p>
+                    <p>请在左侧选择对话或新建对话开始。</p>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
+                <button id="send-btn" disabled>
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Modal Removed - Moved to separate page -->
+
+    <!-- Custom Alert/Confirm Modal -->
+    <div id="custom-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <div id="custom-modal-message" class="custom-modal-message"></div>
+            <div id="custom-modal-actions" class="custom-modal-actions">
+                <!-- Buttons will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+    <script src="/static/common.js"></script>
+</body>
+</html>

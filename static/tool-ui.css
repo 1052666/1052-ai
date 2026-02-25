@@ -1,0 +1,67 @@
+/* Tool Use Styles */
+.tool-call-container {
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin: 10px 0;
+    padding: 10px;
+    font-size: 0.9em;
+    font-family: monospace;
+}
+
+.tool-call-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--accent-color);
+    margin-bottom: 5px;
+    cursor: pointer;
+}
+
+.tool-call-header i {
+    margin-right: 5px;
+}
+
+.tool-call-args {
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 100px;
+    overflow-y: auto;
+    background: rgba(0,0,0,0.2);
+    padding: 5px;
+    border-radius: 4px;
+}
+
+.tool-result {
+    margin-top: 5px;
+    padding-top: 5px;
+    border-top: 1px dashed var(--border-color);
+    color: #4caf50; /* Green for success */
+}
+
+.tool-result.error {
+    color: #ff4d4d;
+}
+
+.tool-status-icon {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid var(--accent-color);
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+.tool-status-icon.done {
+    border: none;
+    width: auto;
+    height: auto;
+    animation: none;
+    color: #4caf50;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}

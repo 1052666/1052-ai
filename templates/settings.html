@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设置 - 1052 AI</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/custom-ui.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar (Shared Structure) -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">1052 AI</h2>
+                <div class="sidebar-controls">
+                    <a href="/" class="icon-btn" title="返回聊天">
+                        <i class="fas fa-comment-alt"></i>
+                    </a>
+                    <button id="toggle-sidebar-btn" class="icon-btn" title="收起侧边栏">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="conversations-list">
+                <div class="conversation-item active" data-target="model-settings">
+                    <span class="title"><i class="fas fa-robot"></i> 模型配置</span>
+                </div>
+                <div class="conversation-item" data-target="mcp-settings">
+                    <span class="title"><i class="fas fa-server"></i> MCP Servers</span>
+                </div>
+                <div class="conversation-item" data-target="skills-settings">
+                    <span class="title"><i class="fas fa-magic"></i> 技能 (Skills)</span>
+                </div>
+                <div class="conversation-item" data-target="social-settings">
+                    <span class="title"><i class="fas fa-share-alt"></i> 社交平台接入</span>
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <a href="/" class="settings-btn">
+                    <i class="fas fa-arrow-left"></i> <span class="btn-text">返回聊天</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- Main Settings Area -->
+        <div class="main-chat settings-page-content">
+            <div class="chat-header">
+                <span>系统设置</span>
+            </div>
+            
+            <div class="settings-scroll-area">
+                <div class="settings-container">
+                    <!-- Model Settings Section -->
+                    <div id="model-settings" class="settings-page-section active">
+                        <div class="settings-section">
+                            <h3><i class="fas fa-robot"></i> 模型配置</h3>
+                            <div class="form-group">
+                                <label for="api-key">API Key</label>
+                                <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
+                                <p class="help-text">请输入您的 OpenAI 或兼容服务的 API Key。</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="base-url">Base URL</label>
+                                <input type="text" id="base-url" placeholder="https://api.openai.com/v1">
+                                <p class="help-text">API 服务地址，默认为 OpenAI官方地址。</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="model-name">Model Name</label>
+                                <input type="text" id="model-name" placeholder="gpt-3.5-turbo">
+                                <p class="help-text">使用的模型名称，如 gpt-4, gpt-3.5-turbo 等。</p>
+                            </div>
+                        </div>
+                        <div class="settings-actions">
+                            <button id="save-settings-btn" class="primary-btn">保存模型配置</button>
+                        </div>
+                    </div>
+
+                    <!-- MCP Settings Section -->
+                    <div id="mcp-settings" class="settings-page-section" style="display: none;">
+                        <div class="settings-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="margin-bottom: 0;"><i class="fas fa-server"></i> MCP Servers</h3>
+                                <button id="add-mcp-btn" class="icon-btn" title="添加 Server"><i class="fas fa-plus"></i></button>
+                            </div>
+                            <div id="mcp-servers-list">
+                                <!-- MCP Servers will be injected here -->
+                                <p class="help-text" style="text-align: center;">暂无配置的 MCP Server</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Skills Settings Section -->
+                    <div id="skills-settings" class="settings-page-section" style="display: none;">
+                        <div class="settings-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                                <h3 style="margin-bottom: 0;"><i class="fas fa-magic"></i> 本地技能 (Skills)</h3>
+                                <button id="add-skill-btn" class="icon-btn" title="上传技能"><i class="fas fa-upload"></i></button>
+                            </div>
+                            <div id="skills-list">
+                                <p class="help-text" style="text-align: center;">加载中...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Social Settings Section -->
+                    <div id="social-settings" class="settings-page-section" style="display: none;">
+                        <div class="settings-section">
+                            <h3>飞书机器人配置</h3>
+                            <div class="form-group">
+                                <label for="feishu-app-id">App ID</label>
+                                <input type="text" id="feishu-app-id" placeholder="cli_..." autocomplete="off">
+                                <p class="help-text">在飞书开放平台“凭证与基础信息”中获取。</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="feishu-app-secret">App Secret</label>
+                                <input type="password" id="feishu-app-secret" placeholder="..." autocomplete="off">
+                                <p class="help-text">在飞书开放平台“凭证与基础信息”中获取。</p>
+                            </div>
+                            <div class="form-group">
+                                <label for="feishu-verification-token">Verification Token</label>
+                                <input type="text" id="feishu-verification-token" placeholder="..." autocomplete="off">
+                                <p class="help-text">在飞书开放平台“事件订阅”中查看。</p>
+                            </div>
+                            
+                            <div class="form-group" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                                <label style="margin-bottom: 5px; display: block;">您的请求网址 (Webhook URL)</label>
+                                <div style="display: flex; gap: 10px; align-items: center;">
+                                    <input type="text" id="feishu-webhook-url" readonly style="background: #e0e0e0; color: #555; cursor: default; flex-grow: 1;">
+                                    <button class="secondary-btn" id="copy-webhook-btn">复制</button>
+                                </div>
+                                <p class="help-text" style="margin-top: 8px;">请将此地址填入飞书后台的“请求网址”栏。<strong>注意：飞书要求此地址必须公网可访问 (如使用 ngrok)。</strong></p>
+                            </div>
+                            
+                            <div style="margin-top: 20px; text-align: right;">
+                                <button id="save-social-btn" class="primary-btn">保存社交配置</button>
+                            </div>
+                        </div>
+
+                        <div class="settings-section" style="margin-top: 20px;">
+                            <h3><i class="fas fa-book"></i> 接入指南</h3>
+                            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
+                                <ol style="padding-left: 20px; color: var(--text-secondary); line-height: 1.8;">
+                                    <li>登录 <a href="https://open.feishu.cn/" target="_blank" style="color: var(--accent-color);">飞书开放平台</a>，创建“企业自建应用”。</li>
+                                    <li>在 <strong>凭证与基础信息</strong> 中获取 <code>App ID</code> 和 <code>App Secret</code>，填入上方配置。</li>
+                                    <li>在 <strong>添加应用能力</strong> 中启用“机器人”。</li>
+                                    <li>在 <strong>权限管理</strong> 中开通以下权限，并发布版本：
+                                        <ul style="margin: 5px 0;">
+                                            <li><code>im:message</code> (获取单聊消息)</li>
+                                            <li><code>im:message.group_at_msg</code> (获取群聊消息)</li>
+                                            <li><code>im:message:send_as_bot</code> (以应用身份发消息)</li>
+                                        </ul>
+                                    </li>
+                                    <li>在 <strong>事件订阅</strong> 中配置请求网址 (使用上方的 Webhook URL)。</li>
+                                    <li>获取 <strong>Verification Token</strong> 并填入上方配置。</li>
+                                    <li>最后，点击“发布版本”使应用生效。</li>
+                                </ol>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MCP Server Modal -->
+    <div id="mcp-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="mcp-modal-title">添加 MCP Server</h3>
+                <span class="close-modal" id="close-mcp-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="mcp-id">
+                
+                <div class="form-group">
+                    <label for="mcp-name">名称 (Name)</label>
+                    <input type="text" id="mcp-name" placeholder="例如: Filesystem Server">
+                </div>
+
+                <div class="form-group">
+                    <label for="mcp-config-json">配置 (JSON Config)</label>
+                    <textarea id="mcp-config-json" rows="10" placeholder='{
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users"]
+}' style="font-family: monospace; font-size: 0.9em;"></textarea>
+                    <p class="help-text">请直接粘贴 MCP Server 的 JSON 配置。</p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; align-items: center;">
+                <button id="save-mcp-btn" class="primary-btn">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skill Upload Modal -->
+    <div id="skill-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="skill-modal-title">上传技能包</h3>
+                <span class="close-modal" id="close-skill-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="skill-file">选择文件 (.zip 或 .py)</label>
+                    <input type="file" id="skill-file" accept=".zip,.py">
+                    <p class="help-text">如果是 .zip 包，请确保包内直接包含 .py 文件，系统会自动解压。</p>
+                </div>
+            </div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; align-items: center;">
+                <button id="upload-skill-confirm-btn" class="primary-btn">上传并添加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modal -->
+    <div id="custom-modal" class="custom-modal">
+        <div class="custom-modal-content">
+            <div id="custom-modal-message" class="custom-modal-message"></div>
+            <div id="custom-modal-actions" class="custom-modal-actions">
+                <!-- Buttons will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/common.js"></script>
+    <script>
+        // Custom UI Helpers (Implemented in common.js)
+ 
+        // Settings Page Logic
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Navigation Logic
+            const navItems = document.querySelectorAll('.conversation-item');
+            const sections = document.querySelectorAll('.settings-page-section');
+
+            navItems.forEach(item => {
+                item.addEventListener('click', () => {
+                    // Remove active class from all items
+                    navItems.forEach(nav => nav.classList.remove('active'));
+                    // Add active class to clicked item
+                    item.classList.add('active');
+
+                    // Hide all sections
+                    sections.forEach(section => {
+                        section.style.display = 'none';
+                        section.classList.remove('active');
+                    });
+
+                    // Show target section
+                    const targetId = item.dataset.target;
+                    const targetSection = document.getElementById(targetId);
+                    if (targetSection) {
+                        targetSection.style.display = 'block';
+                        targetSection.classList.add('active');
+                    }
+                });
+            });
+
+            // Initial Load logic...
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                
+                document.getElementById('api-key').value = settings.api_key || '';
+                document.getElementById('base-url').value = settings.base_url || '';
+                document.getElementById('model-name').value = settings.model || '';
+
+                // Load Social Settings
+                document.getElementById('feishu-app-id').value = settings.feishu_app_id || '';
+                document.getElementById('feishu-app-secret').value = settings.feishu_app_secret || '';
+                document.getElementById('feishu-verification-token').value = settings.feishu_verification_token || '';
+
+                // Calculate Webhook URL
+                const protocol = window.location.protocol;
+                const host = window.location.host;
+                document.getElementById('feishu-webhook-url').value = `${protocol}//${host}/api/feishu/event`;
+
+            } catch (error) {
+                console.error('Failed to load settings:', error);
+                showCustomAlert('加载设置失败，请检查网络。');
+            }
+
+            // MCP Logic
+            const mcpList = document.getElementById('mcp-servers-list');
+            const addMcpBtn = document.getElementById('add-mcp-btn');
+            const mcpModal = document.getElementById('mcp-modal');
+            const closeMcpModal = document.getElementById('close-mcp-modal');
+            const saveMcpBtn = document.getElementById('save-mcp-btn');
+
+            
+            // Import Logic removed
+
+            
+            async function loadMcpServers() {
+                try {
+                    const response = await fetch('/api/mcp_servers');
+                    const servers = await response.json();
+                    
+                    if (servers.length === 0) {
+                        mcpList.innerHTML = '<p class="help-text" style="text-align: center;">暂无配置的 MCP Server</p>';
+                        return;
+                    }
+
+                    mcpList.innerHTML = '';
+                    servers.forEach(server => {
+                        const div = document.createElement('div');
+                        div.style.padding = '15px';
+                        div.style.border = '1px solid var(--border-color)';
+                        div.style.borderRadius = '8px';
+                        div.style.marginBottom = '15px';
+                        div.style.display = 'flex';
+                        div.style.justifyContent = 'space-between';
+                        div.style.alignItems = 'center';
+                        div.style.backgroundColor = 'var(--bg-secondary)';
+
+                        div.innerHTML = `
+                            <div style="flex-grow: 1;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                                    <strong style="color: var(--accent-color); font-size: 1.1em;">${server.name}</strong>
+                                    <span style="background: var(--bg-primary); padding: 2px 8px; border-radius: 4px; font-size: 0.8em; color: var(--text-secondary); border: 1px solid var(--border-color);">${server.type}</span>
+                                </div>
+                                <div style="color: var(--text-secondary); font-size: 0.9em; font-family: monospace;">
+                                    ${server.type === 'stdio' ? server.command : server.url}
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 15px;">
+                                <label class="toggle-switch" title="启用/禁用">
+                                    <input type="checkbox" class="mcp-toggle" data-id="${server.id}" ${server.enabled ? 'checked' : ''}>
+                                    <span class="slider round"></span>
+                                </label>
+                                <div style="display: flex; gap: 5px;">
+                                    <button class="icon-btn edit-mcp-btn" data-id="${server.id}" title="编辑"><i class="fas fa-edit"></i></button>
+                                    <button class="icon-btn delete-mcp-btn" data-id="${server.id}" title="删除" style="color: #ff4d4d;"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Bind events
+                        const toggle = div.querySelector('.mcp-toggle');
+                        toggle.addEventListener('change', async (e) => {
+                            const enabled = e.target.checked;
+                            try {
+                                await fetch(`/api/mcp_servers/${server.id}`, {
+                                    method: 'PUT',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ enabled: enabled ? 1 : 0 })
+                                });
+                            } catch (error) {
+                                console.error('Failed to update status', error);
+                                e.target.checked = !enabled; // Revert
+                                showCustomAlert('更新状态失败');
+                            }
+                        });
+
+                        div.querySelector('.delete-mcp-btn').onclick = async () => {
+                            if (await showCustomConfirm(`确定要删除 ${server.name} 吗？`)) {
+                                await fetch(`/api/mcp_servers/${server.id}`, { method: 'DELETE' });
+                                loadMcpServers();
+                            }
+                        };
+                        
+                        div.querySelector('.edit-mcp-btn').onclick = () => {
+                            openMcpModal(server);
+                        };
+
+                        mcpList.appendChild(div);
+                    });
+                } catch (error) {
+                    console.error('Failed to load MCP servers:', error);
+                }
+            }
+
+            function openMcpModal(server = null) {
+                const title = document.getElementById('mcp-modal-title');
+                const idInput = document.getElementById('mcp-id');
+                const nameInput = document.getElementById('mcp-name');
+                const configInput = document.getElementById('mcp-config-json');
+
+                if (server) {
+                    title.textContent = '编辑 MCP Server';
+                    idInput.value = server.id;
+                    nameInput.value = server.name;
+                    
+                    let config = {};
+                    if (server.type === 'stdio') {
+                        config.command = server.command;
+                        try {
+                            config.args = server.args ? JSON.parse(server.args) : [];
+                        } catch (e) { config.args = []; }
+                        try {
+                            config.env = server.env ? JSON.parse(server.env) : {};
+                        } catch (e) { config.env = {}; }
+                    } else if (server.type === 'sse') {
+                        config.url = server.url;
+                    }
+                    
+                    configInput.value = JSON.stringify(config, null, 2);
+                } else {
+                    title.textContent = '添加 MCP Server';
+                    idInput.value = '';
+                    nameInput.value = '';
+                    configInput.value = '';
+                }
+                
+                mcpModal.style.display = 'block';
+            }
+
+
+            
+            addMcpBtn.addEventListener('click', () => openMcpModal());
+            
+            closeMcpModal.addEventListener('click', () => {
+                mcpModal.style.display = 'none';
+            });
+            
+            window.addEventListener('click', (e) => {
+                if (e.target === mcpModal) mcpModal.style.display = 'none';
+            });
+
+
+
+            // Intelligent MCP Config Parser
+            function parseMcpConfig(configStr, currentName) {
+                if (!configStr) throw new Error('配置不能为空');
+                
+                let config;
+                try {
+                    config = JSON.parse(configStr);
+                } catch (e) {
+                    throw new Error('JSON 格式错误: ' + e.message);
+                }
+
+                let name = currentName;
+                let finalConfig = {};
+
+                // Case 0: Array Input (Args only) -> default npx
+                if (Array.isArray(config)) {
+                    finalConfig = {
+                        command: 'npx',
+                        args: config,
+                        env: {}
+                    };
+                }
+                // Case 1: "mcpServers" wrapper
+                else if (config.mcpServers && typeof config.mcpServers === 'object') {
+                    const keys = Object.keys(config.mcpServers);
+                    if (keys.length > 0) {
+                        // Use first server found
+                        const key = keys[0];
+                        if (!name) name = key;
+                        finalConfig = config.mcpServers[key];
+                    } else {
+                        throw new Error('mcpServers 对象为空');
+                    }
+                }
+                // Case 2: Single Key Wrapper (e.g. {"filesystem": {...}})
+                // Heuristic: If it has no command/url/args but has a child that does
+                else if (!config.command && !config.url && !config.args) {
+                    const keys = Object.keys(config);
+                    // Check if the first child looks like a config
+                    if (keys.length > 0) {
+                         // Try to find a valid config in children
+                         let found = false;
+                         for (const key of keys) {
+                             const child = config[key];
+                             if (child && typeof child === 'object' && (child.command || child.url || child.args)) {
+                                 if (!name) name = key;
+                                 finalConfig = child;
+                                 found = true;
+                                 break;
+                             }
+                         }
+                         
+                         // If not found, maybe the user really meant an empty object or custom env?
+                         // But if keys.length === 1, assume it's a wrapper
+                         if (!found && keys.length === 1) {
+                             // Fallback: assume the inner object IS the config, even if missing fields (will use defaults)
+                             if (!name) name = keys[0];
+                             finalConfig = config[keys[0]];
+                         } else if (!found) {
+                             // Treat as direct config (maybe just env?)
+                             finalConfig = config;
+                         }
+                    } else {
+                        finalConfig = config;
+                    }
+                }
+                // Case 3: Direct Config
+                else {
+                    finalConfig = config;
+                }
+
+                // Normalize fields
+                let type = 'stdio';
+                let command = null;
+                let args = [];
+                let env = {};
+                let url = null;
+
+                if (finalConfig.url) {
+                    type = 'sse';
+                    url = finalConfig.url;
+                } else {
+                    type = 'stdio';
+                    command = finalConfig.command || 'npx';
+                    args = finalConfig.args || [];
+                    env = finalConfig.env || {};
+                }
+                
+                return {
+                    name,
+                    type,
+                    command,
+                    args,
+                    env,
+                    url
+                };
+            }
+
+            saveMcpBtn.addEventListener('click', async () => {
+                const id = document.getElementById('mcp-id').value;
+                const nameInput = document.getElementById('mcp-name');
+                const configStr = document.getElementById('mcp-config-json').value.trim();
+
+                let parsed;
+                try {
+                    parsed = parseMcpConfig(configStr, nameInput.value.trim());
+                } catch (e) {
+                    await showCustomAlert(e.message);
+                    return;
+                }
+
+                if (!parsed.name) {
+                    await showCustomAlert('无法自动识别名称，请在“名称”栏输入 Server 名称');
+                    return;
+                }
+                
+                // Update UI with inferred name if it was empty
+                if (!nameInput.value.trim()) {
+                    nameInput.value = parsed.name;
+                }
+
+                const payload = {
+                    name: parsed.name,
+                    type: parsed.type,
+                    command: parsed.command,
+                    args: parsed.args,
+                    env: parsed.env,
+                    url: parsed.url
+                };
+
+                // UI Feedback - Start Test
+                const originalBtnText = saveMcpBtn.textContent;
+                saveMcpBtn.textContent = '验证连接...';
+                saveMcpBtn.disabled = true;
+                
+                let testPassed = false;
+                let testMessage = '';
+
+                try {
+                    // Try to connect first
+                    const testResponse = await fetch('/api/mcp_servers/test', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    const testResult = await testResponse.json();
+                    
+                    if (testResult.status === 'success') {
+                        testPassed = true;
+                        testMessage = testResult.message;
+                    } else {
+                        testPassed = false;
+                        testMessage = testResult.message;
+                    }
+                } catch (error) {
+                    testPassed = false;
+                    testMessage = '网络连接错误';
+                }
+
+                // Restore button state
+                saveMcpBtn.textContent = originalBtnText;
+                saveMcpBtn.disabled = false;
+
+                // Decision logic
+                let proceedToSave = false;
+
+                if (testPassed) {
+                    proceedToSave = true;
+                } else {
+                    // Ask user if they want to force save
+                    const confirmSave = await showCustomConfirm(`连接失败: ${testMessage}\n\n是否仍然保存此配置？`);
+                    if (confirmSave) {
+                        proceedToSave = true;
+                    }
+                }
+
+                if (proceedToSave) {
+                    const method = id ? 'PUT' : 'POST';
+                    const urlPath = id ? `/api/mcp_servers/${id}` : '/api/mcp_servers';
+
+                    try {
+                        await fetch(urlPath, {
+                            method: method,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+                        mcpModal.style.display = 'none';
+                        loadMcpServers();
+                        
+                        if (testPassed) {
+                            showCustomAlert('保存成功！\n' + testMessage);
+                        } else {
+                            showCustomAlert('已强制保存 (连接失败)。');
+                        }
+                    } catch (error) {
+                        console.error('Failed to save MCP server:', error);
+                        showCustomAlert('保存失败');
+                    }
+                }
+            });
+
+            // Initial Load
+            loadMcpServers();
+            loadSkills();
+
+            // Skills Logic
+            const skillsList = document.getElementById('skills-list');
+            const addSkillBtn = document.getElementById('add-skill-btn');
+            const skillModal = document.getElementById('skill-modal');
+            const closeSkillModal = document.getElementById('close-skill-modal');
+            const uploadSkillBtn = document.getElementById('upload-skill-confirm-btn');
+            const skillFileInput = document.getElementById('skill-file');
+
+            async function loadSkills() {
+                try {
+                    const response = await fetch('/api/skills');
+                    const skills = await response.json();
+                    
+                    if (skills.length === 0) {
+                        skillsList.innerHTML = '<p class="help-text" style="text-align: center;">暂无本地技能</p>';
+                        return;
+                    }
+
+                    skillsList.innerHTML = '';
+                    skills.forEach(skill => {
+                        const div = document.createElement('div');
+                        div.style.padding = '15px';
+                        div.style.border = '1px solid var(--border-color)';
+                        div.style.borderRadius = '8px';
+                        div.style.marginBottom = '15px';
+                        div.style.display = 'flex';
+                        div.style.justifyContent = 'space-between';
+                        div.style.alignItems = 'center';
+                        div.style.backgroundColor = 'var(--bg-secondary)';
+
+                        // Format functions list
+                        let descriptionHtml = '';
+                        if (skill.description) {
+                            // Truncate description if too long
+                            const shortDesc = skill.description.length > 150 ? skill.description.substring(0, 150) + '...' : skill.description;
+                            descriptionHtml = `<div style="font-size: 0.9em; color: var(--text-secondary); margin-top: 5px; white-space: pre-wrap; font-family: monospace; background: rgba(0,0,0,0.1); padding: 5px; border-radius: 4px;">${shortDesc}</div>`;
+                        } else {
+                            descriptionHtml = `<div style="font-size: 0.9em; color: var(--text-secondary); margin-top: 5px; font-style: italic;">No description (README.md not found)</div>`;
+                        }
+
+                        div.innerHTML = `
+                            <div style="flex-grow: 1;">
+                                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 5px;">
+                                    <strong style="color: var(--accent-color); font-size: 1.1em;">
+                                        <i class="${skill.is_folder ? 'fas fa-folder' : 'fas fa-file-code'}"></i> 
+                                        ${skill.name}
+                                    </strong>
+                                </div>
+                                <div style="padding-left: 5px;">
+                                    ${descriptionHtml}
+                                </div>
+                            </div>
+                            <div>
+                                <button class="icon-btn delete-skill-btn" data-filename="${skill.name}" title="删除" style="color: #ff4d4d;"><i class="fas fa-trash"></i></button>
+                            </div>
+                        `;
+                        
+                        div.querySelector('.delete-skill-btn').onclick = async () => {
+                            if (await showCustomConfirm(`确定要删除技能 "${skill.name}" 吗？\n(这将删除整个文件夹/文件)`)) {
+                                try {
+                                    const res = await fetch(`/api/skills/${skill.name}`, { method: 'DELETE' });
+                                    if (res.ok) {
+                                        loadSkills();
+                                        showCustomAlert('删除成功');
+                                    } else {
+                                        const err = await res.json();
+                                        showCustomAlert('删除失败: ' + err.error);
+                                    }
+                                } catch (e) {
+                                    showCustomAlert('删除失败: ' + e.message);
+                                }
+                            }
+                        };
+
+                        skillsList.appendChild(div);
+                    });
+                } catch (error) {
+                    console.error('Failed to load skills:', error);
+                    skillsList.innerHTML = '<p class="help-text" style="text-align: center; color: #ff4d4d;">加载失败</p>';
+                }
+            }
+
+            addSkillBtn.addEventListener('click', () => {
+                skillFileInput.value = '';
+                skillModal.style.display = 'block';
+            });
+
+            closeSkillModal.addEventListener('click', () => {
+                skillModal.style.display = 'none';
+            });
+            
+            window.addEventListener('click', (e) => {
+                if (e.target === skillModal) skillModal.style.display = 'none';
+            });
+
+            uploadSkillBtn.addEventListener('click', async () => {
+                const file = skillFileInput.files[0];
+                if (!file) {
+                    await showCustomAlert('请选择文件');
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const originalText = uploadSkillBtn.textContent;
+                uploadSkillBtn.textContent = '上传中...';
+                uploadSkillBtn.disabled = true;
+
+                try {
+                    const response = await fetch('/api/skills', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        skillModal.style.display = 'none';
+                        loadSkills();
+                        showCustomAlert(result.message);
+                    } else {
+                        showCustomAlert('上传失败: ' + (result.error || result.message));
+                    }
+                } catch (error) {
+                    console.error(error);
+                    showCustomAlert('网络错误');
+                } finally {
+                    uploadSkillBtn.textContent = originalText;
+                    uploadSkillBtn.disabled = false;
+                }
+            });
+
+            document.getElementById('save-settings-btn').addEventListener('click', async () => {
+                const apiKey = document.getElementById('api-key').value.trim();
+                const baseUrl = document.getElementById('base-url').value.trim();
+                const model = document.getElementById('model-name').value.trim();
+
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            api_key: apiKey,
+                            base_url: baseUrl,
+                            model: model
+                        })
+                    });
+                    await showCustomAlert('设置已保存');
+                } catch (error) {
+                    console.error('Failed to save settings:', error);
+                    showCustomAlert('保存设置失败。');
+                }
+            });
+
+            // Social Settings Save
+            document.getElementById('save-social-btn').addEventListener('click', async () => {
+                const appId = document.getElementById('feishu-app-id').value.trim();
+                const appSecret = document.getElementById('feishu-app-secret').value.trim();
+                const token = document.getElementById('feishu-verification-token').value.trim();
+
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            feishu_app_id: appId,
+                            feishu_app_secret: appSecret,
+                            feishu_verification_token: token
+                        })
+                    });
+                    await showCustomAlert('飞书配置已保存');
+                } catch (error) {
+                    console.error('Failed to save social settings:', error);
+                    showCustomAlert('保存失败。');
+                }
+            });
+            
+            // Copy Webhook URL
+            document.getElementById('copy-webhook-btn').addEventListener('click', () => {
+                const urlInput = document.getElementById('feishu-webhook-url');
+                urlInput.select();
+                document.execCommand('copy'); // Fallback
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(urlInput.value).then(() => {
+                        showCustomAlert('已复制到剪贴板');
+                    });
+                } else {
+                    showCustomAlert('已复制 (Legacy)');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
