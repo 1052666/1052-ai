@@ -8,6 +8,7 @@ import asyncio
 import zipfile
 import shutil
 import threading
+import time
 import inspect
 import webbrowser
 from werkzeug.utils import secure_filename
@@ -134,6 +135,25 @@ def init_db():
                     url TEXT, -- for sse
                     enabled BOOLEAN DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )''')
+    # Scheduled Tasks table
+    c.execute('''CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content TEXT NOT NULL,
+                    trigger_time TEXT NOT NULL,
+                    status TEXT DEFAULT 'pending',
+                    conversation_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )''')
+    # AI Diary & Evolution Log
+    c.execute('''CREATE TABLE IF NOT EXISTS ai_evolution_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    content TEXT NOT NULL,
+                    type TEXT DEFAULT 'plan', -- 'plan', 'monologue'
+                    status TEXT DEFAULT 'pending', -- 'pending', 'in_progress', 'completed', 'failed'
+                    result_summary TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )''')
     conn.commit()
     conn.close()
@@ -826,6 +846,21 @@ def process_feishu_message_thread(sender_id, user_text):
                                     result = skill_manager.execute_skill_function(skill_name, file_name, function_name, kwargs)
                             except Exception as e:
                                 result = f"Error executing skill: {str(e)}"
+                                
+                        elif func_name == 'record_improvement_plan':
+                            try:
+                                content = func_args.get('content')
+                                entry_type = func_args.get('type', 'plan')
+                                
+                                conn = get_db_connection()
+                                conn.execute('INSERT INTO ai_evolution_log (content, type, status) VALUES (?, ?, ?)', 
+                                            (content, entry_type, 'pending' if entry_type == 'plan' else 'completed'))
+                                conn.commit()
+                                conn.close()
+                                result = f"Successfully recorded {entry_type} into diary."
+                            except Exception as e:
+                                result = f"Error recording plan: {str(e)}"
+
                         else:
                             result = f"Error: Tool {func_name} not found."
                             
@@ -883,6 +918,7 @@ def chat():
     base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
     model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
     enable_system_control = settings.get('enable_system_control') == 'true'
+    enable_self_reflection = settings.get('enable_self_reflection') == 'true'
     model_provider = settings.get('model_provider', 'openai')
     
     # Handle Local Model Provider
@@ -1032,6 +1068,28 @@ def chat():
                         "required": ["query"]
                     }
                 }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "record_improvement_plan",
+                    "description": "Record a self-improvement plan or internal monologue into your diary. Use this during Self-Reflection when you identify a gap and want to fix it later automatically.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "content": {
+                                "type": "string",
+                                "description": "The detailed plan or monologue. Describe what skill you want to learn or what code you want to write."
+                            },
+                            "type": {
+                                "type": "string",
+                                "enum": ["plan", "monologue"],
+                                "description": "Type of the entry. Use 'plan' for actionable items that need execution."
+                            }
+                        },
+                        "required": ["content", "type"]
+                    }
+                }
             }]
 
             # Merge tools
@@ -1042,6 +1100,10 @@ def chat():
             
             # Inject Skills Description into System Prompt (or first message)
             # Find the system prompt and append, or add new system prompt
+            
+            # --- Time Context Injection ---
+            now = datetime.datetime.now()
+            time_context = f"Current Time: {now.strftime('%Y-%m-%d %H:%M:%S')} ({now.strftime('%A')})\n\n"
             
             # --- 1052 Protocol Context Injection ---
             # Inject Basic Info & Preferences into System Prompt
@@ -1068,14 +1130,15 @@ def chat():
                 if msg['role'] == 'system':
                     # Append skills description to existing system prompt
                     # We assume system_prompt.md is the source of truth for base identity
-                    msg['content'] += memory_context + "\n\n" + skills_description
+                    # PREPEND time_context to ensure it's seen first
+                    msg['content'] = time_context + msg['content'] + memory_context + "\n\n" + skills_description
                     found_system = True
                     break
             
             if not found_system:
                 # If no system prompt found (e.g. file missing), use a default one + skills
                 default_system = "You are 1052 AI."
-                current_messages.insert(0, {'role': 'system', 'content': default_system + memory_context + "\n\n" + skills_description})
+                current_messages.insert(0, {'role': 'system', 'content': time_context + default_system + memory_context + "\n\n" + skills_description})
 
             
             while True:
@@ -1200,6 +1263,9 @@ def chat():
                             function_name = func_args.get('function_name')
                             kwargs = func_args.get('kwargs', {})
                             
+                            # Inject context
+                            kwargs['_conversation_id'] = conversation_id
+                            
                             # Security Check
                             if skill_name == 'cmd_control' and not enable_system_control:
                                 result = "Error: System Control is disabled in settings. You cannot execute commands."
@@ -1226,13 +1292,367 @@ def chat():
 
                 # Loop continues to next iteration to send tool outputs back to OpenAI
                 
+            # If we are here, it means we finished processing a turn (with or without tool calls)
+            # If enable_self_reflection is ON, we should trigger a reflection step
+            # But we must be careful not to infinite loop.
+            # Reflection should be a separate "system" prompt call that analyzes the LAST turn.
+            # However, simpler implementation:
+            # If finish_reason is 'stop', and enable_self_reflection is True, we can append a system prompt
+            # asking for reflection and continue generation?
+            # Or better: Just append a hidden "Thought" block if the model supports it?
+            # DeepSeek R1 supports <think>.
+            # But user wants "Self-Evolution": "Think what is missing and improve".
+            
+            # Implementation:
+            # After the main response is done (no more tool calls), if enable_self_reflection is True:
+            # We trigger a SECOND, invisible LLM call to analyze the situation.
+            
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             yield json.dumps({"type": "error", "content": error_msg}) + "\n"
         finally:
             loop.close()
+            
+            # --- Self-Reflection & Evolution Step ---
+            # Only run if enabled and no error occurred in main loop
+            if enable_self_reflection and finish_reason == 'stop':
+                try:
+                    # We run this in a new loop or just sync since we are already in a generator?
+                    # We need to yield output to frontend so user sees the "Evolution".
+                    
+                    yield json.dumps({"type": "content", "data": "\n\n--- 🧠 **Self-Reflection** ---\n"}) + "\n"
+                    
+                    reflection_prompt = (
+                        "You have just completed a task for the user. Now, engage in **Self-Reflection**.\n"
+                        "1. Analyze your performance: Did you satisfy the user's intent? Was there anything missing?\n"
+                        "2. Identify gaps: Do you lack any skills or knowledge to do this better?\n"
+                        "3. **Self-Improvement**: If you identify a missing skill, use `record_improvement_plan` to write it down into your diary. It will be automatically implemented tonight.\n"
+                        "4. Output your thoughts concisely."
+                    )
+                    
+                    # Add reflection instruction
+                    reflection_messages = current_messages.copy()
+                    reflection_messages.append({'role': 'system', 'content': reflection_prompt})
+                    
+                    # Call LLM again for reflection
+                    # Note: We need a new loop or simple request
+                    refl_payload = {
+                        'model': model,
+                        'messages': reflection_messages,
+                        'stream': True
+                    }
+                    if tools:
+                        refl_payload['tools'] = tools
+                        refl_payload['tool_choice'] = 'auto'
+
+                    # Add record_improvement_plan to available tools list for reflection
+                    # Actually tools already has it because we added it to `local_tools` above
+                    
+                    # print("Starting Reflection...")
+                    # We use a separate synchronous request for Reflection to handle tool calls robustly,
+                    # but we simulate streaming for user experience?
+                    # Or just stream normally and parse tool calls manually.
+                    
+                    refl_response = requests.post(f"{base_url}/chat/completions", headers=headers, json=refl_payload, stream=True, timeout=120)
+                    
+                    reflection_tool_buffer = {}
+                    
+                    for line in refl_response.iter_lines():
+                        if not line: continue
+                        line = line.decode('utf-8')
+                        if not line.startswith('data: '): continue
+                        data_str = line[6:]
+                        if data_str == '[DONE]': break
+                        try:
+                            chunk = json.loads(data_str)
+                            if not chunk['choices']: continue
+                            delta = chunk['choices'][0].get('delta', {})
+                            
+                            if 'content' in delta and delta['content']:
+                                yield json.dumps({"type": "content", "data": delta['content']}) + "\n"
+                                
+                            if 'tool_calls' in delta and delta['tool_calls']:
+                                for tc in delta['tool_calls']:
+                                    idx = tc['index']
+                                    if idx not in reflection_tool_buffer:
+                                        reflection_tool_buffer[idx] = tc
+                                    else:
+                                        # Merge
+                                        if 'function' in tc:
+                                            if 'name' in tc['function']:
+                                                if 'function' not in reflection_tool_buffer[idx]: reflection_tool_buffer[idx]['function'] = {}
+                                                reflection_tool_buffer[idx]['function']['name'] = reflection_tool_buffer[idx]['function'].get('name', '') + tc['function']['name']
+                                            if 'arguments' in tc['function']:
+                                                if 'function' not in reflection_tool_buffer[idx]: reflection_tool_buffer[idx]['function'] = {}
+                                                reflection_tool_buffer[idx]['function']['arguments'] = reflection_tool_buffer[idx]['function'].get('arguments', '') + tc['function']['arguments']
+                        except: pass
+                    
+                    yield json.dumps({"type": "content", "data": "\n\n--------------------------------\n"}) + "\n"
+
+                    # After stream ends, check for tool calls
+                    if reflection_tool_buffer:
+                        for idx, tool_call in reflection_tool_buffer.items():
+                            func_name = tool_call['function']['name']
+                            args_str = tool_call['function']['arguments']
+                            try:
+                                args = json.loads(args_str)
+                                if func_name == 'record_improvement_plan':
+                                    # Execute it
+                                    content = args.get('content')
+                                    entry_type = args.get('type', 'plan')
+                                    
+                                    conn = get_db_connection()
+                                    conn.execute('INSERT INTO ai_evolution_log (content, type, status) VALUES (?, ?, ?)', 
+                                                (content, entry_type, 'pending' if entry_type == 'plan' else 'completed'))
+                                    conn.commit()
+                                    conn.close()
+                                    
+                                    yield json.dumps({"type": "content", "data": f"\n[Diary] Recorded: {entry_type}\n"}) + "\n"
+                            except Exception as e:
+                                print(f"Failed to execute reflection tool: {e}")
+
+                except Exception as e:
+                    print(f"Reflection failed: {e}")
+
+                except Exception as e:
+                    print(f"Reflection failed: {e}")
 
     return Response(stream_with_context(generate()), content_type='text/plain')
+
+
+# Scheduler Thread Function
+def scheduler_loop():
+    print("Scheduler thread started.")
+    last_evolution_check = datetime.datetime.now()
+    
+    while True:
+        try:
+            # Use absolute path to DB file
+            conn = sqlite3.connect(DB_FILE)
+            conn.row_factory = sqlite3.Row
+            
+            now = datetime.datetime.now()
+            now_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            
+            # 1. Handle Scheduled Tasks
+            # Find pending tasks that are due
+            # trigger_time <= now_str works for ISO format strings
+            cursor = conn.execute(
+                "SELECT * FROM scheduled_tasks WHERE status = 'pending' AND trigger_time <= ?", 
+                (now_str,)
+            )
+            tasks = cursor.fetchall()
+            
+            if tasks:
+                print(f"Found {len(tasks)} due tasks.")
+                
+            for task in tasks:
+                task_id = task['id']
+                content = task['content']
+                conversation_id = task['conversation_id']
+                
+                print(f"Executing scheduled task {task_id}: {content}")
+                
+                # Mark as completed
+                conn.execute("UPDATE scheduled_tasks SET status = 'completed' WHERE id = ?", (task_id,))
+                
+                # Add reminder message to chat
+                reminder_msg = f"⏰ **定时提醒**: {content}"
+                conn.execute(
+                    'INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
+                    (conversation_id, 'assistant', reminder_msg)
+                )
+                conn.commit()
+                
+            # 2. Handle Auto-Evolution (Nightly)
+            # Check every 10 minutes to save resources
+            if (now - last_evolution_check).total_seconds() > 600:
+                last_evolution_check = now
+                
+                # Condition: Idle for > 2 hours?
+                # Find last user message
+                last_msg = conn.execute("SELECT created_at FROM messages WHERE role='user' ORDER BY created_at DESC LIMIT 1").fetchone()
+                
+                should_evolve = False
+                if last_msg:
+                    last_time_str = last_msg['created_at']
+                    try:
+                        # created_at is likely YYYY-MM-DD HH:MM:SS
+                        last_time = datetime.datetime.strptime(last_time_str, '%Y-%m-%d %H:%M:%S')
+                        if (now - last_time).total_seconds() > 7200: # 2 hours
+                            should_evolve = True
+                    except:
+                        pass # Date format error
+                else:
+                    # No messages ever?
+                    should_evolve = True
+
+                # Also check pending plans
+                pending_plans = conn.execute("SELECT * FROM ai_evolution_log WHERE status='pending' AND type='plan'").fetchall()
+                
+                if should_evolve and pending_plans:
+                    print(f"Triggering Auto-Evolution for {len(pending_plans)} plans...")
+                    
+                    # We need to run evolution for each plan
+                    # Note: This is running in a thread, so we can do blocking calls.
+                    # We need to load settings to get API key
+                    settings_rows = conn.execute('SELECT * FROM settings').fetchall()
+                    settings = {row['key']: row['value'] for row in settings_rows}
+                    api_key = settings.get('api_key')
+                    base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
+                    model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
+                    enable_system_control = settings.get('enable_system_control') == 'true'
+                    
+                    if api_key and enable_system_control:
+                        headers = {
+                            'Authorization': f'Bearer {api_key}',
+                            'Content-Type': 'application/json'
+                        }
+                        
+                        # Load tools for evolution (it needs to write code!)
+                        # We re-discover tools here
+                        # Note: run_until_complete in a thread that might not have loop?
+                        # It's better to instantiate a new loop for this thread.
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        try:
+                            mcp_tools, server_map = loop.run_until_complete(get_all_mcp_tools())
+                            skill_manager.load_skills()
+                            skills_desc = skill_manager.get_all_skills_description()
+                            
+                            # Construct tools list (Reuse definition from main route is hard, let's simplify)
+                            # We only need `execute_skill_function` and `protocol_learn_experience` really.
+                            # But full power is better.
+                            # For simplicity, let's assume `execute_skill_function` is enough for "Evolution".
+                            
+                            evolve_tools = [{
+                                "type": "function",
+                                "function": {
+                                    "name": "execute_skill_function",
+                                    "description": "Execute a Python function from a local skill.",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "skill_name": {"type": "string"},
+                                            "file_name": {"type": "string"},
+                                            "function_name": {"type": "string"},
+                                            "kwargs": {"type": "object"}
+                                        },
+                                        "required": ["skill_name", "file_name", "function_name"]
+                                    }
+                                }
+                            }]
+                            
+                            for plan in pending_plans:
+                                plan_id = plan['id']
+                                plan_content = plan['content']
+                                
+                                print(f"Evolving plan {plan_id}: {plan_content}")
+                                
+                                # 1. Mark as in_progress
+                                conn.execute("UPDATE ai_evolution_log SET status='in_progress' WHERE id=?", (plan_id,))
+                                conn.commit()
+                                
+                                # 2. Construct Prompt
+                                sys_prompt = (
+                                    f"You are 1052 AI in Auto-Evolution Mode.\n"
+                                    f"Current Time: {now_str}\n"
+                                    f"Objective: Execute the following improvement plan recorded in your diary: '{plan_content}'\n"
+                                    f"Available Skills:\n{skills_desc}\n"
+                                    f"Instructions:\n"
+                                    f"1. Write code or learn experience to fulfill the plan.\n"
+                                    f"2. Use `execute_skill_function` to create files or run scripts.\n"
+                                    f"3. When done, output a summary of what you achieved."
+                                )
+                                
+                                messages = [{'role': 'system', 'content': sys_prompt}]
+                                
+                                # 3. Call LLM (Simple non-streaming loop for tool use)
+                                # We limit to 3 turns to avoid infinite loops
+                                summary = "Evolution attempted."
+                                success = False
+                                
+                                for turn in range(3):
+                                    payload = {
+                                        'model': model,
+                                        'messages': messages,
+                                        'tools': evolve_tools,
+                                        'tool_choice': 'auto'
+                                    }
+                                    
+                                    try:
+                                        resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=120)
+                                        resp_json = resp.json()
+                                        
+                                        if 'choices' in resp_json and resp_json['choices']:
+                                            choice = resp_json['choices'][0]
+                                            msg = choice['message']
+                                            messages.append(msg)
+                                            
+                                            if msg.get('tool_calls'):
+                                                # Execute tools
+                                                for tc in msg['tool_calls']:
+                                                    func_name = tc['function']['name']
+                                                    args_str = tc['function']['arguments']
+                                                    call_id = tc['id']
+                                                    
+                                                    res_str = ""
+                                                    if func_name == 'execute_skill_function':
+                                                        try:
+                                                            args = json.loads(args_str)
+                                                            res_str = skill_manager.execute_skill_function(
+                                                                args.get('skill_name'), args.get('file_name'), 
+                                                                args.get('function_name'), args.get('kwargs', {})
+                                                            )
+                                                            success = True # If we executed code, assume some success
+                                                        except Exception as e:
+                                                            res_str = f"Error: {e}"
+                                                    
+                                                    messages.append({
+                                                        "role": "tool",
+                                                        "tool_call_id": call_id,
+                                                        "content": str(res_str)
+                                                    })
+                                            else:
+                                                # Final response
+                                                summary = msg.get('content', 'No content')
+                                                break
+                                        else:
+                                            print(f"Evolution LLM Empty Response: {resp.text}")
+                                            break
+                                    except Exception as e:
+                                        print(f"Evolution LLM Error: {e}")
+                                        break
+                                
+                                # 4. Update Log
+                                status = 'completed' if success else 'failed'
+                                conn.execute("UPDATE ai_evolution_log SET status=?, result_summary=?, updated_at=CURRENT_TIMESTAMP WHERE id=?", 
+                                            (status, summary, plan_id))
+                                
+                                # 5. Notify User
+                                # Find a recent conversation to post to? Or the last one?
+                                # Use the conversation_id from the last user message if possible
+                                # But we don't have it here easily unless we query messages again.
+                                # Let's just pick the latest active conversation.
+                                last_conv = conn.execute("SELECT conversation_id FROM messages ORDER BY created_at DESC LIMIT 1").fetchone()
+                                if last_conv:
+                                    notify_msg = f"🌙 **夜间进化报告**\n\n针对计划：_{plan_content}_\n\n执行结果：\n{summary}"
+                                    conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
+                                                (last_conv['conversation_id'], 'assistant', notify_msg))
+                                    conn.commit()
+                                    
+                        finally:
+                            loop.close()
+                    
+            conn.commit()
+            conn.close()
+            
+        except Exception as e:
+            print(f"Scheduler error: {e}")
+            # traceback.print_exc()
+            
+        time.sleep(5) # Check every 5 seconds
 
 
 if __name__ == '__main__':
@@ -1245,6 +1665,7 @@ if __name__ == '__main__':
         webbrowser.open_new(url)
     
     if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
+        threading.Thread(target=scheduler_loop, daemon=True).start()
         threading.Timer(1.5, open_browser).start()
         
     app.run(debug=False, port=port)

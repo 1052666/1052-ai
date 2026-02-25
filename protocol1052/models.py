@@ -24,6 +24,9 @@ class BasicInfo:
 
     @classmethod
     def from_dict(cls, data: Dict):
+        # Handle case where data might be None or not a dict
+        if not isinstance(data, dict):
+            return cls()
         return cls(**{
             k: v for k, v in data.items() 
             if k in cls.__dataclass_fields__
@@ -37,6 +40,8 @@ class Preferences:
 
     @classmethod
     def from_dict(cls, data: Dict):
+        if not isinstance(data, dict):
+            return cls()
         return cls(**{
             k: v for k, v in data.items() 
             if k in cls.__dataclass_fields__
@@ -50,6 +55,8 @@ class DiaryEntry:
 
     @classmethod
     def from_dict(cls, data: Dict):
+        if not isinstance(data, dict):
+            return cls(date=datetime.datetime.now().strftime("%Y-%m-%d"))
         return cls(**{
             k: v for k, v in data.items() 
             if k in cls.__dataclass_fields__
@@ -65,6 +72,8 @@ class Permissions:
 
     @classmethod
     def from_dict(cls, data: Dict):
+        if not isinstance(data, dict):
+            return cls()
         return cls(**{
             k: v for k, v in data.items() 
             if k in cls.__dataclass_fields__
@@ -88,6 +97,10 @@ class Memory:
 
     @classmethod
     def from_dict(cls, data: Dict):
+        if not isinstance(data, dict):
+            # Fallback if data is corrupted
+            return cls(user_id="unknown", agent_id="unknown")
+
         # Filter top-level fields
         filtered_data = {
             k: v for k, v in data.items() 
@@ -95,20 +108,34 @@ class Memory:
         }
         
         # Handle nested objects
-        if 'basic' in filtered_data and isinstance(filtered_data['basic'], dict):
+        if 'basic' in filtered_data:
             filtered_data['basic'] = BasicInfo.from_dict(filtered_data['basic'])
+        else:
+            filtered_data['basic'] = BasicInfo()
             
-        if 'preferences' in filtered_data and isinstance(filtered_data['preferences'], dict):
+        if 'preferences' in filtered_data:
             filtered_data['preferences'] = Preferences.from_dict(filtered_data['preferences'])
+        else:
+            filtered_data['preferences'] = Preferences()
             
-        if 'permissions' in filtered_data and isinstance(filtered_data['permissions'], dict):
+        if 'permissions' in filtered_data:
             filtered_data['permissions'] = Permissions.from_dict(filtered_data['permissions'])
+        else:
+            filtered_data['permissions'] = Permissions()
             
         if 'daily_diaries' in filtered_data and isinstance(filtered_data['daily_diaries'], list):
             filtered_data['daily_diaries'] = [
                 DiaryEntry.from_dict(d) for d in filtered_data['daily_diaries'] 
                 if isinstance(d, dict)
             ]
+        else:
+            filtered_data['daily_diaries'] = []
+            
+        # Ensure user_id and agent_id are present (they are required fields)
+        if 'user_id' not in filtered_data:
+            filtered_data['user_id'] = "unknown"
+        if 'agent_id' not in filtered_data:
+            filtered_data['agent_id'] = "unknown"
             
         return cls(**filtered_data)
 

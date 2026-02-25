@@ -273,4 +273,53 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial Load
     loadConversations();
+
+    // Poll for new messages (e.g. scheduled reminders)
+    setInterval(async () => {
+        if (!currentConversationId) return;
+        
+        // Don't poll if we are waiting for a response (sendBtn is disabled)
+        if (sendBtn.disabled) return;
+
+        try {
+            const messages = await apiCall(`/api/conversations/${currentConversationId}/messages`);
+            
+            // Count existing messages (excluding tool call containers if they are not .message)
+            // appendMessage creates <div class="message ...">
+            const currentElements = chatMessages.querySelectorAll('.message');
+            const currentCount = currentElements.length;
+            
+            if (messages.length > currentCount) {
+                // If we had a welcome message, clear it first
+                if (chatMessages.querySelector('.welcome-message')) {
+                    chatMessages.innerHTML = '';
+                }
+
+                // Append new messages
+                const newMessages = messages.slice(currentCount);
+                newMessages.forEach(msg => {
+                     appendMessage(msg.role, msg.content);
+                });
+                
+                if (newMessages.length > 0) {
+                    // Play a notification sound if supported? 
+                    // Or just scroll
+                    scrollToBottom();
+                    
+                    // Optional: Browser Notification
+                    if (Notification.permission === "granted") {
+                        new Notification("1052 AI", { body: newMessages[newMessages.length-1].content });
+                    } else if (Notification.permission !== "denied") {
+                        Notification.requestPermission().then(permission => {
+                            if (permission === "granted") {
+                                new Notification("1052 AI", { body: newMessages[newMessages.length-1].content });
+                            }
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Polling error:", e);
+        }
+    }, 5000);
 });

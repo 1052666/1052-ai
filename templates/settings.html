@@ -97,6 +97,18 @@
                                     </label>
                                 </div>
                             </div>
+                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <label for="enable-self-reflection" style="margin-bottom: 5px; display: block;">自我思考与进化 (Self-Reflection)</label>
+                                        <p class="help-text" style="margin: 0;">开启后，AI 将在每次回复后自动进行反思，分析自身不足并尝试自我改进（例如自动查阅文档、编写新技能）。</p>
+                                    </div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="enable-self-reflection">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                         <div class="settings-actions">
                             <button id="save-settings-btn" class="primary-btn">保存模型配置</button>
@@ -303,6 +315,7 @@
                 }
 
                 document.getElementById('enable-system-control').checked = settings.enable_system_control === 'true';
+                document.getElementById('enable-self-reflection').checked = settings.enable_self_reflection === 'true';
 
                 // Load Social Settings
                 document.getElementById('feishu-app-id').value = settings.feishu_app_id || '';
@@ -830,6 +843,7 @@
                 const baseUrl = document.getElementById('base-url').value.trim();
                 const model = document.getElementById('model-name').value.trim();
                 const systemControl = document.getElementById('enable-system-control').checked;
+                const selfReflection = document.getElementById('enable-self-reflection').checked;
                 const provider = document.getElementById('model-provider').value;
 
                 try {
@@ -841,6 +855,7 @@
                             base_url: baseUrl,
                             model: model,
                             enable_system_control: systemControl ? 'true' : 'false',
+                            enable_self_reflection: selfReflection ? 'true' : 'false',
                             model_provider: provider
                         })
                     });
