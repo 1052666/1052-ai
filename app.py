@@ -17,6 +17,7 @@ from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult, TextContent
 from skill_manager import SkillManager
 from feishu_utils import FeishuBot
+from protocol1052.client import Protocol1052
 
 # --- Path Configuration for EXE ---
 if getattr(sys, 'frozen', False):
@@ -35,6 +36,7 @@ else:
 # Ensure user data directories exist in DATA_DIR (Exe directory)
 SKILLS_DIR = os.path.join(DATA_DIR, 'skills')
 DB_FILE = os.path.join(DATA_DIR, 'chat.db')
+PROTOCOL_DIR = os.path.join(DATA_DIR, '1052_data')
 
 # --- Resource Extraction for EXE ---
 def extract_default_resources():
@@ -85,6 +87,12 @@ extract_default_resources()
 
 # Initialize SkillManager with correct path
 skill_manager = SkillManager(skills_dir=SKILLS_DIR)
+
+# Initialize Protocol1052
+# For simplicity, we use a single user_id for now, but this could be dynamic per conversation
+# In a multi-user environment, we would instantiate this per request/session
+DEFAULT_USER_ID = "owner"
+protocol_brain = Protocol1052(user_id=DEFAULT_USER_ID, storage_root=PROTOCOL_DIR)
 
 
 def get_db_connection():
@@ -637,8 +645,8 @@ def process_feishu_message_thread(sender_id, user_text):
             
             # Prepare LLM Call
             api_key = settings.get('api_key')
-            base_url = settings.get('base_url', 'https://api.openai.com/v1')
-            model = settings.get('model', 'gpt-3.5-turbo')
+            base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
+            model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
             
             if not api_key:
                 bot.send_message("open_id", sender_id, "text", "Error: API Key not configured.")
@@ -770,16 +778,54 @@ def process_feishu_message_thread(sender_id, user_text):
                                 result = loop.run_until_complete(run_mcp_tool(server_map[func_name], func_name, func_args))
                             except Exception as e:
                                 result = str(e)
+                        
+                        elif func_name == 'protocol_remember':
+                            try:
+                                key = func_args.get('key')
+                                value = func_args.get('value')
+                                protocol_brain.set_preference(key, value)
+                                result = f"Successfully remembered preference: {key} = {value}"
+                            except Exception as e:
+                                result = f"Error remembering: {str(e)}"
+
+                        elif func_name == 'protocol_learn_experience':
+                            try:
+                                problem = func_args.get('problem')
+                                solution = func_args.get('solution')
+                                tags = func_args.get('tags', [])
+                                exp_id = protocol_brain.add_experience(problem, solution, tags)
+                                result = f"Successfully learned experience. Experience ID: {exp_id}"
+                            except Exception as e:
+                                result = f"Error learning experience: {str(e)}"
+                        
+                        elif func_name == 'protocol_recall_experience':
+                            try:
+                                query = func_args.get('query')
+                                results = protocol_brain.search_experience(query)
+                                if not results:
+                                    result = "No relevant experiences found."
+                                else:
+                                    # Limit to top 3 to save tokens
+                                    top_results = results[:3]
+                                    result = json.dumps(top_results, ensure_ascii=False)
+                            except Exception as e:
+                                result = f"Error recalling experience: {str(e)}"
+
                         elif func_name == 'execute_skill_function':
                             try:
-                                result = skill_manager.execute_skill_function(
-                                    func_args.get('skill_name'),
-                                    func_args.get('file_name'),
-                                    func_args.get('function_name'),
-                                    func_args.get('kwargs', {})
-                                )
+                                # Parse args
+                                skill_name = func_args.get('skill_name')
+                                file_name = func_args.get('file_name')
+                                function_name = func_args.get('function_name')
+                                kwargs = func_args.get('kwargs', {})
+                                
+                                # Security Check
+                                if skill_name == 'cmd_control' and not enable_system_control:
+                                    result = "Error: System Control is disabled in settings. You cannot execute commands."
+                                else:
+                                    result = skill_manager.execute_skill_function(skill_name, file_name, function_name, kwargs)
                             except Exception as e:
-                                result = str(e)
+                                result = f"Error executing skill: {str(e)}"
                         else:
                             result = f"Error: Tool {func_name} not found."
                             
@@ -834,8 +880,15 @@ def chat():
     settings = {row['key']: row['value'] for row in settings_rows}
     
     api_key = settings.get('api_key')
-    base_url = settings.get('base_url', 'https://api.openai.com/v1')
-    model = settings.get('model', 'gpt-3.5-turbo')
+    base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
+    model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
+    enable_system_control = settings.get('enable_system_control') == 'true'
+    model_provider = settings.get('model_provider', 'openai')
+    
+    # Handle Local Model Provider
+    if model_provider == 'local':
+        if not api_key:
+            api_key = 'ollama' # Dummy key often required by clients even for local models
     
     # Get conversation history
     history = conn.execute('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC', (conversation_id,)).fetchall()
@@ -913,6 +966,72 @@ def chat():
                         "required": ["skill_name", "file_name", "function_name"]
                     }
                 }
+            },
+            # 1052 Protocol Tools
+            {
+                "type": "function",
+                "function": {
+                    "name": "protocol_remember",
+                    "description": "Store a user preference or fact into long-term memory. Use this when the user explicitly asks to remember something or when you detect a stable user preference (e.g., 'I like python', 'Call me Master').",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string",
+                                "description": "The key for the preference (e.g., 'language_preference', 'nickname')."
+                            },
+                            "value": {
+                                "type": "string",
+                                "description": "The value to store."
+                            }
+                        },
+                        "required": ["key", "value"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "protocol_learn_experience",
+                    "description": "Save a solution to a problem as an 'Experience'. Use this when you have successfully solved a complex problem or when the user provides a specific solution they want you to remember.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "problem": {
+                                "type": "string",
+                                "description": "A short description of the problem."
+                            },
+                            "solution": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "A list of steps or a description of the solution."
+                            },
+                            "tags": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "Tags for easier retrieval (e.g., ['python', 'error', 'network'])."
+                            }
+                        },
+                        "required": ["problem", "solution"]
+                    }
+                }
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "protocol_recall_experience",
+                    "description": "Search for past experiences/solutions related to a query. Use this when you encounter a problem and want to check if you've solved it before.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "Keywords to search for."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
             }]
 
             # Merge tools
@@ -923,19 +1042,41 @@ def chat():
             
             # Inject Skills Description into System Prompt (or first message)
             # Find the system prompt and append, or add new system prompt
+            
+            # --- 1052 Protocol Context Injection ---
+            # Inject Basic Info & Preferences into System Prompt
+            memory_context = ""
+            try:
+                mem_data = protocol_brain.get_memory_json()
+                preferences = mem_data.get('preferences', {})
+                basic = mem_data.get('basic', {})
+                
+                memory_context = f"\n\n## 1052 Protocol Memory Context\n"
+                memory_context += f"- **User Nickname**: {basic.get('nickname')}\n"
+                memory_context += f"- **Talk Style**: {preferences.get('talk_style')}\n"
+                
+                custom_prefs = preferences.get('custom', {})
+                if custom_prefs:
+                    memory_context += "- **Custom Preferences**:\n"
+                    for k, v in custom_prefs.items():
+                        memory_context += f"  - {k}: {v}\n"
+            except Exception as e:
+                print(f"Failed to inject memory context: {e}")
+            
             found_system = False
             for msg in current_messages:
                 if msg['role'] == 'system':
                     # Append skills description to existing system prompt
                     # We assume system_prompt.md is the source of truth for base identity
-                    msg['content'] += "\n\n" + skills_description
+                    msg['content'] += memory_context + "\n\n" + skills_description
                     found_system = True
                     break
             
             if not found_system:
                 # If no system prompt found (e.g. file missing), use a default one + skills
                 default_system = "You are 1052 AI."
-                current_messages.insert(0, {'role': 'system', 'content': default_system + "\n\n" + skills_description})
+                current_messages.insert(0, {'role': 'system', 'content': default_system + memory_context + "\n\n" + skills_description})
+
             
             while True:
                 payload = {
@@ -1059,7 +1200,11 @@ def chat():
                             function_name = func_args.get('function_name')
                             kwargs = func_args.get('kwargs', {})
                             
-                            result = skill_manager.execute_skill_function(skill_name, file_name, function_name, kwargs)
+                            # Security Check
+                            if skill_name == 'cmd_control' and not enable_system_control:
+                                result = "Error: System Control is disabled in settings. You cannot execute commands."
+                            else:
+                                result = skill_manager.execute_skill_function(skill_name, file_name, function_name, kwargs)
                         except Exception as e:
                             result = f"Error executing skill: {str(e)}"
                     else:

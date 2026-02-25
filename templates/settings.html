@@ -59,19 +59,43 @@
                         <div class="settings-section">
                             <h3><i class="fas fa-robot"></i> 模型配置</h3>
                             <div class="form-group">
+                                <label for="model-provider">Model Provider</label>
+                                <select id="model-provider" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-primary);">
+                                    <option value="openai">OpenAI Compatible (Remote)</option>
+                                    <option value="local">Local Model (Ollama/LocalAI)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="api-key-group">
                                 <label for="api-key">API Key</label>
                                 <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
-                                <p class="help-text">请输入您的 OpenAI 或兼容服务的 API Key。</p>
+                                <p class="help-text">
+                                    请输入您的 OpenAI 或兼容服务的 API Key。
+                                    <a href="https://cloud.siliconflow.cn/i/QOxdzxkd" target="_blank" style="color: var(--accent-color); margin-left: 5px;">
+                                        <i class="fas fa-external-link-alt"></i> 没有 API Key? 点击获取
+                                    </a>
+                                </p>
                             </div>
                             <div class="form-group">
                                 <label for="base-url">Base URL</label>
-                                <input type="text" id="base-url" placeholder="https://api.openai.com/v1">
-                                <p class="help-text">API 服务地址，默认为 OpenAI官方地址。</p>
+                                <input type="text" id="base-url" placeholder="https://api.siliconflow.cn/v1">
+                                <p class="help-text">API 服务地址，默认为 https://api.siliconflow.cn/v1</p>
                             </div>
                             <div class="form-group">
                                 <label for="model-name">Model Name</label>
-                                <input type="text" id="model-name" placeholder="gpt-3.5-turbo">
-                                <p class="help-text">使用的模型名称，如 gpt-4, gpt-3.5-turbo 等。</p>
+                                <input type="text" id="model-name" placeholder="deepseek-ai/DeepSeek-V3.2">
+                                <p class="help-text">使用的模型名称，如 deepseek-ai/DeepSeek-V3.2 等。</p>
+                            </div>
+                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div>
+                                        <label for="enable-system-control" style="margin-bottom: 5px; display: block;">系统控制权限 (System Control)</label>
+                                        <p class="help-text" style="margin: 0;">允许 AI 执行本地命令 (CMD) 和修改系统文件。关闭后 AI 仅能进行对话和只读操作。</p>
+                                    </div>
+                                    <label class="toggle-switch">
+                                        <input type="checkbox" id="enable-system-control">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
                             </div>
                         </div>
                         <div class="settings-actions">
@@ -267,6 +291,18 @@
                 document.getElementById('api-key').value = settings.api_key || '';
                 document.getElementById('base-url').value = settings.base_url || '';
                 document.getElementById('model-name').value = settings.model || '';
+                document.getElementById('model-provider').value = settings.model_provider || 'openai';
+                
+                // Trigger provider change to update UI
+                const providerSelect = document.getElementById('model-provider');
+                // Manually set initial state since listener might not be attached yet
+                if (settings.model_provider === 'local') {
+                    document.getElementById('api-key-group').style.display = 'none';
+                } else {
+                    document.getElementById('api-key-group').style.display = 'block';
+                }
+
+                document.getElementById('enable-system-control').checked = settings.enable_system_control === 'true';
 
                 // Load Social Settings
                 document.getElementById('feishu-app-id').value = settings.feishu_app_id || '';
@@ -759,10 +795,42 @@
                 }
             });
 
+            // Provider Toggle Logic
+            const providerSelect = document.getElementById('model-provider');
+            const apiKeyGroup = document.getElementById('api-key-group');
+            const apiKeyInput = document.getElementById('api-key');
+            const baseUrlInput = document.getElementById('base-url');
+            const modelNameInput = document.getElementById('model-name');
+            
+            providerSelect.addEventListener('change', () => {
+                const provider = providerSelect.value;
+                if (provider === 'local') {
+                    // Local Model: Hide API Key, set default URL if empty
+                    apiKeyGroup.style.display = 'none';
+                    if (!baseUrlInput.value || baseUrlInput.value.includes('api.openai.com')) {
+                        baseUrlInput.value = 'http://localhost:11434/v1';
+                    }
+                    if (!modelNameInput.value || modelNameInput.value.includes('gpt-')) {
+                        modelNameInput.value = 'llama3';
+                    }
+                } else {
+                    // OpenAI: Show API Key
+                    apiKeyGroup.style.display = 'block';
+                    if (baseUrlInput.value.includes('localhost') || baseUrlInput.value === '') {
+                        baseUrlInput.value = 'https://api.siliconflow.cn/v1';
+                    }
+                    if (modelNameInput.value === 'llama3' || modelNameInput.value === '' || modelNameInput.value === 'gpt-3.5-turbo') {
+                        modelNameInput.value = 'deepseek-ai/DeepSeek-V3.2';
+                    }
+                }
+            });
+
             document.getElementById('save-settings-btn').addEventListener('click', async () => {
                 const apiKey = document.getElementById('api-key').value.trim();
                 const baseUrl = document.getElementById('base-url').value.trim();
                 const model = document.getElementById('model-name').value.trim();
+                const systemControl = document.getElementById('enable-system-control').checked;
+                const provider = document.getElementById('model-provider').value;
 
                 try {
                     await fetch('/api/settings', {
@@ -771,7 +839,9 @@
                         body: JSON.stringify({
                             api_key: apiKey,
                             base_url: baseUrl,
-                            model: model
+                            model: model,
+                            enable_system_control: systemControl ? 'true' : 'false',
+                            model_provider: provider
                         })
                     });
                     await showCustomAlert('设置已保存');

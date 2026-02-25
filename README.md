@@ -1,121 +1,110 @@
 # 1052 AI
 
-1052 AI 是一个基于 Flask 构建的强大本地 AI 聊天应用。它集成了模型上下文协议 (MCP) 和自定义技能系统 (Skill System) 等高级功能，使 AI 能够与您的本地文件系统交互、运行命令并执行自定义 Python 函数，同时支持飞书机器人接入。中国版的open claw，针对国内环境以及Windows的环境做了深度适配，项目目前处于早期阶段，将会陆续完成版本更新以及1052协议(LLM记忆机制与经验机制)
+> **The Chinese Version of OpenClaw | 本地优先的 AI 智能体框架**  
+> 深度适配国内环境与 Windows 系统，内置记忆协议与自我进化机制。
+
+1052 AI 是一个基于 Flask 构建的强大本地 AI 聊天应用。它不仅是一个聊天机器人，更是一个能够操作计算机、管理记忆并自我进化的智能体。
 
 [🇺🇸 English Documentation (README_EN.md)](README_EN.md)
 
-## 主要特性
+## 核心特性 (Key Features)
 
-*   **智能聊天界面**：现代化、响应式的网页聊天界面，支持 Markdown 渲染。
-*   **Exe 一键运行**：提供打包好的 `.exe` 版本，双击即可运行，无需配置 Python 环境。
-*   **MCP 集成**：全面支持模型上下文协议 (MCP)。您可以连接任何符合 MCP 标准的服务器（如 `filesystem`、`github` 等），赋予 AI 访问外部工具和数据的能力。
-*   **自定义技能系统**：通过编写简单的 Python 函数来扩展 AI 的能力。只需将 `.py` 文件或 `.zip` 压缩包放入 `skills` 文件夹，AI 即可立即将其作为工具使用。
-*   **内置 CMD 控制**：预装 Windows CMD 控制技能，允许 AI 执行系统命令和打开应用程序。
-*   **飞书机器人接入**：支持配置飞书机器人，将 AI 能力接入飞书聊天。
-*   **技能管理**：直接在设置界面中上传、查看列表和删除技能。支持将技能整理到文件夹（包）中。
-*   **对话管理**：支持创建多个对话、在不同对话间切换以及删除旧的聊天记录。
-*   **灵活配置**：轻松配置您的大语言模型提供商（兼容 OpenAI 接口）、API 密钥和模型名称。
+### 🧠 1052 协议 (Memory & Experience)
+内置 **[1052 协议](1052_Protocol/README.md)**，赋予 AI 长期记忆与经验积累能力。
+*   **记住偏好**：AI 会记住你的称呼、语言习惯和工作偏好。
+*   **经验学习**：AI 会自动总结解决问题的经验，并在下次遇到类似问题时自动调取。
 
-## 快速开始 (Exe 版本)
+### 🔌 全面集成 MCP (Model Context Protocol)
+支持标准化的 MCP 协议，轻松连接外部世界。
+*   **文件系统**：直接读写本地文件。
+*   **GitHub**：管理代码仓库。
+*   **更多工具**：支持任何符合 MCP 标准的 Server。
 
-1.  下载 `1052AI.exe`。
+### 🛠️ 自定义技能与自我进化
+*   **Python 技能**：只需将 `.py` 文件放入 `skills` 文件夹，AI 即可获得新能力。
+*   **自我进化**：AI 可以（在授权下）编写新的技能代码来扩展自己的能力，甚至修改自身的系统提示词。
+
+### 💻 深度适配 Windows
+*   **CMD 控制**：内置 Windows CMD 控制技能，可执行系统命令、打开应用。
+*   **一键运行**：提供 `.exe` 版本，无需 Python 环境，开箱即用。
+
+### 🤖 多模型支持与社交接入
+*   **模型支持**：兼容 OpenAI 接口，默认配置 **SiliconFlow (硅基流动)** 的 DeepSeek-V3 模型，国内访问极速稳定。
+*   **本地模型**：一键切换 Ollama 等本地模型。
+*   **飞书接入**：支持配置飞书机器人，将 AI 能力接入团队协作。
+
+## 快速开始 (Exe 版本) - 推荐
+
+1.  下载最新版本的 `1052AI.exe`。
 2.  将其放入一个空文件夹（例如 `MyBot`）。
 3.  双击运行 `1052AI.exe`。
-    *   程序会自动在当前目录下生成 `skills` 文件夹、`chat.db` 数据库和配置文件。
-    *   程序会自动打开默认浏览器访问 `http://127.0.0.1:10052`。
-4.  开始聊天！
+    *   程序会自动初始化环境，生成 `skills` 目录和配置文件。
+    *   自动打开浏览器访问 `http://127.0.0.1:10052`。
+4.  **开始使用**：默认配置 DeepSeek 模型，填写您的 SiliconFlow API Key 即可直接开始对话！
 
 ## 快速开始 (源码版本)
 
 ### 前置要求
-
 *   Python 3.8+
-*   Node.js & npm (仅当您计划使用需要 Node.js 环境的 MCP 服务器时，例如 `@modelcontextprotocol/server-filesystem`)
+*   Node.js & npm (仅当使用基于 Node 的 MCP Server 时需要)
 
 ### 安装步骤
 
-1.  **克隆仓库** (或下载源代码)：
+1.  **克隆仓库**：
     ```bash
+    git clone https://github.com/1052666/1052-ai
     cd 1052-ai
     ```
 
-2.  **安装 Python 依赖**：
+2.  **安装依赖**：
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **运行应用程序**：
+3.  **运行应用**：
     ```bash
     python app.py
     ```
 
-4.  **打开浏览器**：
-    访问 `http://localhost:10052` 开始聊天。
+4.  **访问**：打开浏览器访问 `http://localhost:10052`。
 
-## 配置指南
+## 功能指南
 
-1.  点击左侧边栏底部的 **设置 (Settings)** 图标。
-2.  **模型配置**：输入您的 API Key、Base URL (例如 `https://api.openai.com/v1`) 和模型名称 (例如 `gpt-4o`, `gpt-3.5-turbo`)。
-3.  保存配置。
+### ⚙️ 系统设置
+点击左下角 **设置 (Settings)** 图标：
+*   **模型配置**：切换 OpenAI/Local 模式，配置 API Key。
+*   **系统控制权限**：**安全开关**。开启后 AI 才能执行 CMD 命令和修改系统文件。默认关闭。
 
-## 使用 MCP (Model Context Protocol)
+### 🧠 记忆与经验
+无需额外配置，直接在对话中使用：
+*   "请记住我是一名 Python 程序员。" -> AI 会调用 `protocol_remember`。
+*   "刚才这个报错的解决方法是..." -> AI 会调用 `protocol_learn_experience`。
 
-MCP 允许 AI 使用标准化的外部工具。
-
+### 🔌 添加 MCP Server
 1.  进入 **设置** -> **MCP Servers**。
 2.  点击 **添加 Server**。
-3.  输入名称 (例如 "Filesystem") 并粘贴配置 JSON。
-    *   *Filesystem Server 配置示例:*
-        ```json
-        {
-          "command": "npx",
-          "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/YourName/Desktop"]
-        }
-        ```
-4.  点击 **确定**。系统会自动测试连接并保存。
-
-## 使用自定义技能 (Skills)
-
-技能是 AI 可以调用的 Python 函数。
-
-1.  进入 **设置** -> **技能 (Skills)**。
-2.  **上传技能**：点击上传图标，选择 `.py` 文件或包含 Python 包的 `.zip` 文件。
-    *   *Zip 上传*：如果您上传 `my_tools.zip`，它会被自动解压到 `skills/my_tools/` 目录，里面的所有 `.py` 文件都会被加载。
-3.  **自动加载**：您也可以手动在 `skills/` 目录下创建文件。
-    *   例如创建文件 `skills/math_tools.py`：
-        ```python
-        def add(a: int, b: int) -> int:
-            """两数相加。"""
-            return a + b
-        ```
-    *   AI 将立即识别并能够使用 `add` 工具。
-
-## 社交平台接入
-
-### 飞书机器人
-
-1.  进入 **设置** -> **社交平台接入**。
-2.  按照页面上的指南配置飞书 App ID、App Secret 和 Verification Token。
-3.  将生成的 Webhook URL 填入飞书后台。
-4.  现在您可以在飞书中直接与 AI 对话。
+3.  粘贴 JSON 配置。例如连接本地文件系统：
+    ```json
+    {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "C:/Users/YourName/Desktop"]
+    }
+    ```
 
 ## 项目结构
 
-*   `app.py`: Flask 主程序和 API 接口。
-*   `skill_manager.py`: 加载和执行 Python 技能的核心逻辑。
-*   `skills/`: 存放自定义技能的目录。
-*   `static/`: CSS 样式和 JavaScript 脚本文件。
-*   `templates/`: HTML 模板文件。
-*   `chat.db`: 存储对话记录和设置的 SQLite 数据库。
+*   `app.py`: 核心服务端。
+*   `protocol1052/`: **1052 协议** 核心实现 (记忆与经验)。
+*   `skills/`: **技能目录**。在此处添加 `.py` 文件即可扩展能力。
+*   `1052_data/`: 存储记忆和经验数据。
+*   `templates/` & `static/`: 前端界面。
 
-## 许可证
+## 许可证 & 免责声明
 
 [MIT License](LICENSE)
 
-## 免责声明
-
+**免责声明**：
 1052 AI 是一个强大的工具，允许执行本地命令和文件操作。
-*   **用户责任**：请确保您完全理解您让 AI 执行的操作。对于因使用本软件（包括但不限于执行危险命令、修改系统文件等）而导致的任何数据丢失、系统损坏或其他后果，开发者不承担任何责任。
-*   **安全提示**：请勿在不受信任的环境中运行本软件，并谨慎授予 AI 敏感权限。
-*   **无担保**：本软件按“原样”提供，不包含任何明示或暗示的担保。
-
+*   **用户责任**：请确保您完全理解您让 AI 执行的操作。
+*   **安全提示**：请勿在不受信任的环境中运行本软件，并谨慎授予 AI 敏感权限（特别是系统控制权限）。
+*   **无担保**：本软件按“原样”提供，开发者不承担任何因使用导致的损失责任。
