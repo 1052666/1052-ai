@@ -85,6 +85,7 @@ class SkillManager:
     def execute_skill_function(self, skill_name, file_name, function_name, kwargs):
         """
         Dynamically load a python module and execute a function.
+        If file_name is not provided or incorrect, tries to find the function in any .py file in the skill folder.
         
         Args:
             skill_name (str): Name of the skill (folder name).
@@ -97,38 +98,67 @@ class SkillManager:
             
         skill_info = self.skills[skill_name]
         
-        # Determine full file path
+        # Helper to try loading a module and finding a function
+        def try_load_and_execute(f_path):
+            if not os.path.exists(f_path):
+                return None, f"File '{f_path}' not found."
+            
+            try:
+                # Load module
+                module_name = f"dynamic_skill_{skill_name}_{os.path.basename(f_path)[:-3]}"
+                spec = importlib.util.spec_from_file_location(module_name, f_path)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[module_name] = module
+                    spec.loader.exec_module(module)
+                    
+                    # Get function
+                    if not hasattr(module, function_name):
+                        return None, f"Function '{function_name}' not found in {os.path.basename(f_path)}."
+                    
+                    func = getattr(module, function_name)
+                    
+                    # Execute
+                    result = func(**kwargs)
+                    return str(result), None
+                else:
+                    return None, "Error: Could not load module."
+            except Exception as e:
+                traceback.print_exc()
+                return None, f"Error executing skill function: {str(e)}"
+
+        # 1. Try with the provided file_name (if it looks valid)
         if skill_info['type'] == 'folder':
-            file_path = os.path.join(skill_info['path'], file_name)
+            if file_name:
+                # Handle cases where AI forgets .py extension
+                if not file_name.endswith('.py'):
+                    file_name += '.py'
+                
+                target_path = os.path.join(skill_info['path'], file_name)
+                res, err = try_load_and_execute(target_path)
+                if res is not None:
+                    return res
+                # If file not found, we fall through to auto-discovery
+            
+            # 2. Auto-discovery: Scan all .py files in the folder for the function
+            py_files = [f for f in os.listdir(skill_info['path']) if f.endswith('.py') and not f.startswith('__')]
+            
+            # Heuristic: Try files that look like the skill name or 'main'/'executor' first
+            priority_files = [f"{skill_name}.py", "main.py", "executor.py", "utils.py"]
+            sorted_py_files = sorted(py_files, key=lambda x: 0 if x in priority_files else 1)
+            
+            for py_file in sorted_py_files:
+                target_path = os.path.join(skill_info['path'], py_file)
+                res, err = try_load_and_execute(target_path)
+                if res is not None:
+                    return res # Found and executed!
+            
+            return f"Error: Function '{function_name}' not found in any Python file in skill '{skill_name}'."
+
         else:
             # Single file skill
-            # If skill_name is 'math', file is 'math.py'
-            # file_name might be ignored or checked
-            file_path = skill_info['path']
-
-        if not os.path.exists(file_path):
-             return f"Error: File '{file_path}' not found."
-
-        try:
-            # Load module
-            module_name = f"dynamic_skill_{skill_name}_{os.path.basename(file_name)[:-3]}"
-            spec = importlib.util.spec_from_file_location(module_name, file_path)
-            if spec and spec.loader:
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[module_name] = module
-                spec.loader.exec_module(module)
-                
-                # Get function
-                if not hasattr(module, function_name):
-                     return f"Error: Function '{function_name}' not found in {file_name}."
-                
-                func = getattr(module, function_name)
-                
-                # Execute
-                result = func(**kwargs)
-                return str(result)
-            else:
-                return "Error: Could not load module."
-        except Exception as e:
-            traceback.print_exc()
-            return f"Error executing skill function: {str(e)}"
+            target_path = skill_info['path']
+            res, err = try_load_and_execute(target_path)
+            if res is not None:
+                return res
+            return err

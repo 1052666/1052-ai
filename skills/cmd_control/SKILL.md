@@ -12,12 +12,64 @@ This skill allows the AI assistant to interact with the local Windows command li
 - **Execute Command**: Run any shell command (e.g., `dir`, `ipconfig`, `systeminfo`, `mkdir`).
 - **Open Application**: Launch common applications (e.g., `notepad`, `calc`).
 
-## Usage Examples
+## Tool Information
 
-- "List files in the current directory" -> execute_command("dir")
-- "Check my IP address" -> execute_command("ipconfig")
-- "Open Calculator" -> open_application("calc")
-- "Create a folder named 'test'" -> execute_command("mkdir test")
+To use this skill, call `execute_skill_function` with the following parameters:
+
+*   **skill_name**: `cmd_control`
+*   **file_name**: `executor.py`
+
+### Available Functions
+
+#### 1. `execute_command(command, cwd=None)`
+Executes a shell command.
+*   `command` (str): The command to run (e.g., `mkdir "C:\\Users\\User\\Desktop\\TestFolder"`).
+*   `cwd` (str, optional): Current working directory.
+
+#### 2. `open_application(app_name)`
+Opens an application.
+*   `app_name` (str): The application name (e.g., `notepad`).
+
+#### 3. `write_file(file_path, content, mode='w', encoding='utf-8')`
+Writes text to a file.
+*   `file_path` (str): Absolute path to the file.
+*   `content` (str): The text content to write.
+*   `mode` (str): 'w' (overwrite) or 'a' (append).
+*   `encoding` (str): Defaults to 'utf-8'.
+
+#### 4. `read_file(file_path, encoding='utf-8', limit=2000)`
+Reads text from a file.
+*   `file_path` (str): Absolute path to the file.
+*   `limit` (int): Max characters to read.
+
+#### 5. `execute_python_code(code)`
+Executes arbitrary Python code.
+*   `code` (str): The Python code to run. Use `print()` to output results.
+*   **WARNING**: This gives the AI full access to the Python environment.
+
+## Usage Examples (Tool Call)
+
+To calculate a complex math expression:
+```json
+{
+  "skill_name": "cmd_control",
+  "file_name": "executor.py",
+  "function_name": "execute_python_code",
+  "kwargs": {
+    "code": "import math\nprint(math.sqrt(12345))"
+  }
+}
+```
+```json
+{
+  "skill_name": "cmd_control",
+  "file_name": "executor.py",
+  "function_name": "execute_command",
+  "kwargs": {
+    "command": "mkdir \"%USERPROFILE%\\Desktop\\TestFolder\""
+  }
+}
+```
 
 ## Important Notes
 
