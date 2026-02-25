@@ -11,6 +11,7 @@ import threading
 import time
 import inspect
 import webbrowser
+from telegram_utils import TelegramBot
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from mcp import ClientSession, StdioServerParameters
@@ -1289,7 +1290,26 @@ def chat():
                         "tool_call_id": call_id,
                         "content": str(result) # Ensure string
                     })
-
+                    
+                    # For protocol_remember, we also want to inject this into the NEXT turn's system prompt immediately?
+                    # Or just wait for next turn.
+                    # Wait, if we updated memory, we should probably reload memory_context for subsequent turns in the same session?
+                    # But session is stateless in HTTP unless we persist context.
+                    # Actually, since `protocol_brain` is a global object in this app context (or re-instantiated), 
+                    # and we modify `protocol_brain.memory` in place in `remember` method,
+                    # the next turn (next while loop iteration if we had one, but we break after tool calls usually)
+                    # Wait, the `generate` function loops over tool calls and then yields.
+                    # It does NOT loop back to LLM for a second thought in the SAME request unless we implement multi-turn tool use.
+                    # Oh, the `while True` loop in `generate` IS for multi-turn tool use!
+                    # So if tool returns, we append result and loop back to LLM.
+                    # The LLM sees the tool output.
+                    
+                    # BUT, the `system_prompt` (with memory_context) was constructed at the BEGINNING of `generate`.
+                    # So the LLM still sees the OLD memory context in the system prompt.
+                    # However, it sees the "Successfully remembered..." tool output, so it KNOWS it remembered it.
+                    # That's sufficient for the current session.
+                    # Next time `generate` is called (next user message), memory_context will be re-read from disk.
+                    
                 # Loop continues to next iteration to send tool outputs back to OpenAI
                 
             # If we are here, it means we finished processing a turn (with or without tool calls)
@@ -1420,6 +1440,319 @@ def chat():
     return Response(stream_with_context(generate()), content_type='text/plain')
 
 
+    return Response(stream_with_context(generate()), content_type='text/plain')
+
+async def headless_chat_turn(conversation_id, user_message, reply_func):
+    """
+    Process a chat turn without Flask context, suitable for Telegram/CLI.
+    """
+    conn = get_db_connection()
+    
+    # 1. Save User Message
+    conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
+                 (conversation_id, 'user', user_message))
+    conn.commit()
+    
+    # Get settings
+    settings_rows = conn.execute('SELECT * FROM settings').fetchall()
+    settings = {row['key']: row['value'] for row in settings_rows}
+    
+    api_key = settings.get('api_key')
+    base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
+    model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
+    enable_system_control = settings.get('enable_system_control') == 'true'
+    enable_self_reflection = settings.get('enable_self_reflection') == 'true'
+    model_provider = settings.get('model_provider', 'openai')
+    
+    # Handle Local Model Provider
+    if model_provider == 'local':
+        if not api_key:
+            api_key = 'ollama'
+
+    # Get conversation history
+    history = conn.execute('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC', (conversation_id,)).fetchall()
+    conn.close()
+    
+    if not api_key:
+        await reply_func("Error: API Key not configured in settings.")
+        return
+
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+
+    # Load system prompt
+    system_prompt = ""
+    system_prompt_path = os.path.join(DATA_DIR, 'system_prompt.md')
+    if os.path.exists(system_prompt_path):
+        try:
+            with open(system_prompt_path, 'r', encoding='utf-8') as f:
+                system_prompt = f.read()
+        except Exception as e:
+            print(f"Error reading system prompt: {e}")
+            
+    # Initial messages list
+    messages_payload = []
+    if system_prompt:
+        messages_payload.append({'role': 'system', 'content': system_prompt})
+        
+    messages_payload.extend([{'role': row['role'], 'content': row['content']} for row in history])
+    
+    # --- Context Injection (Time & Memory) ---
+    # (Copied from generate)
+    now = datetime.datetime.now()
+    time_context = f"Current Time: {now.strftime('%Y-%m-%d %H:%M:%S')} ({now.strftime('%A')})\n\n"
+    
+    # Inject Skills Description
+    skill_manager.load_skills()
+    skills_description = skill_manager.get_all_skills_description()
+    
+    memory_context = ""
+    try:
+        mem_data = protocol_brain.get_memory_json()
+        preferences = mem_data.get('preferences', {})
+        basic = mem_data.get('basic', {})
+        
+        memory_context = f"\n\n## 1052 Protocol Memory Context\n"
+        memory_context += f"- **User Nickname**: {basic.get('nickname')}\n"
+        memory_context += f"- **Talk Style**: {preferences.get('talk_style')}\n"
+        
+        custom_prefs = preferences.get('custom', {})
+        if custom_prefs:
+            memory_context += "- **Custom Preferences**:\n"
+            for k, v in custom_prefs.items():
+                memory_context += f"  - {k}: {v}\n"
+    except Exception as e:
+        print(f"Failed to inject memory context: {e}")
+    
+    found_system = False
+    for msg in messages_payload:
+        if msg['role'] == 'system':
+            msg['content'] = time_context + msg['content'] + memory_context + "\n\n" + skills_description
+            found_system = True
+            break
+    
+    if not found_system:
+        default_system = "You are 1052 AI."
+        messages_payload.insert(0, {'role': 'system', 'content': time_context + default_system + memory_context + "\n\n" + skills_description})
+
+    # Prepare Tools
+    # (Simplified: assume we can get MCP tools here or reuse a global cache? 
+    # For now, let's just use local tools to avoid async loop issues if mcp discovery is slow)
+    # Ideally we should call get_all_mcp_tools() but it requires an event loop.
+    # We are in an async function, so we can await it? No, get_all_mcp_tools is async but we need to manage loop carefully.
+    # Let's assume we are running in an asyncio loop (TG bot runs in asyncio loop).
+    
+    try:
+        mcp_tools, server_map = await get_all_mcp_tools()
+    except:
+        mcp_tools = []
+        server_map = {}
+
+    local_tools = [{
+        "type": "function",
+        "function": {
+            "name": "execute_skill_function",
+            "description": "Execute a Python function from a local skill.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {"type": "string"},
+                    "file_name": {"type": "string"},
+                    "function_name": {"type": "string"},
+                    "kwargs": {"type": "object"}
+                },
+                "required": ["skill_name", "file_name", "function_name"]
+            }
+        }
+    },
+    # Add Protocol Tools (Simplified copy)
+    {
+        "type": "function",
+        "function": {
+            "name": "protocol_remember",
+            "description": "Store a user preference or fact into long-term memory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "key": {"type": "string"},
+                    "value": {"type": "string"}
+                },
+                "required": ["key", "value"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "protocol_learn_experience",
+            "description": "Save a solution to a problem as an 'Experience'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "problem": {"type": "string"},
+                    "solution": {"type": "array", "items": {"type": "string"}},
+                    "tags": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["problem", "solution"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "protocol_recall_experience",
+            "description": "Search for past experiences/solutions related to a query.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "record_improvement_plan",
+            "description": "Record a self-improvement plan into diary.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string"},
+                    "type": {"type": "string", "enum": ["plan", "monologue"]}
+                },
+                "required": ["content", "type"]
+            }
+        }
+    }]
+    
+    tools = mcp_tools + local_tools
+    current_messages = messages_payload
+    
+    # Turn Loop
+    while True:
+        payload = {
+            'model': model,
+            'messages': current_messages,
+            'stream': False # Telegram: No streaming for logic simplicity (or implement chunking)
+        }
+        if tools:
+            payload['tools'] = tools
+            payload['tool_choice'] = 'auto'
+
+        try:
+            # Note: requests is blocking. In async function, better use aiohttp or run_in_executor.
+            # But for simplicity, we use blocking requests here.
+            response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=120)
+            response.raise_for_status()
+            resp_json = response.json()
+            
+            choice = resp_json['choices'][0]
+            msg = choice['message']
+            finish_reason = choice['finish_reason']
+            
+            # Save assistant message (even if tool call)
+            # Actually OpenAI API requires us to append the message object as is
+            current_messages.append(msg)
+            
+            content = msg.get('content')
+            tool_calls = msg.get('tool_calls')
+            
+            if content:
+                await reply_func(content)
+                # Save to DB
+                conn = get_db_connection()
+                conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
+                            (conversation_id, 'assistant', content))
+                conn.commit()
+                conn.close()
+
+            if not tool_calls:
+                break
+                
+            # Handle Tool Calls
+            for tc in tool_calls:
+                func_name = tc['function']['name']
+                args_str = tc['function']['arguments']
+                call_id = tc['id']
+                
+                try:
+                    func_args = json.loads(args_str)
+                except:
+                    func_args = {}
+                
+                # Notify User (Optional)
+                # await reply_func(f"🛠️ Executing {func_name}...")
+                
+                result = ""
+                if func_name in server_map:
+                    try:
+                        result = await run_mcp_tool(server_map[func_name], func_name, func_args)
+                    except Exception as e:
+                        result = f"Error executing tool: {str(e)}"
+                elif func_name == 'execute_skill_function':
+                    try:
+                        skill_name = func_args.get('skill_name')
+                        file_name = func_args.get('file_name')
+                        function_name = func_args.get('function_name')
+                        kwargs = func_args.get('kwargs', {})
+                        kwargs['_conversation_id'] = conversation_id
+                        
+                        if skill_name == 'cmd_control' and not enable_system_control:
+                            result = "Error: System Control is disabled."
+                        else:
+                            result = skill_manager.execute_skill_function(skill_name, file_name, function_name, kwargs)
+                    except Exception as e:
+                        result = f"Error executing skill: {str(e)}"
+                # ... Handle Protocol Tools (Copy logic from generate) ...
+                elif func_name == 'protocol_remember':
+                    try:
+                        saved_path = protocol_brain.remember(func_args.get('key'), func_args.get('value'))
+                        result = f"Successfully remembered: {func_args.get('key')} = {func_args.get('value')}. Saved to {saved_path}"
+                    except Exception as e: result = str(e)
+                elif func_name == 'protocol_learn_experience':
+                    try:
+                        saved_path = protocol_brain.learn_experience(func_args.get('problem'), func_args.get('solution'), func_args.get('tags'))
+                        result = f"Experience learned and saved to {saved_path}."
+                    except Exception as e: result = str(e)
+                elif func_name == 'protocol_recall_experience':
+                    try:
+                        res = protocol_brain.search_experience(func_args.get('query'))
+                        result = json.dumps(res, ensure_ascii=False)
+                    except Exception as e: result = str(e)
+                elif func_name == 'record_improvement_plan':
+                    try:
+                        content = func_args.get('content')
+                        entry_type = func_args.get('type', 'plan')
+                        conn = get_db_connection()
+                        conn.execute('INSERT INTO ai_evolution_log (content, type, status) VALUES (?, ?, ?)', 
+                                    (content, entry_type, 'pending' if entry_type == 'plan' else 'completed'))
+                        conn.commit()
+                        conn.close()
+                        result = f"Recorded {entry_type}."
+                    except Exception as e: result = str(e)
+                else:
+                    result = f"Error: Tool {func_name} not found."
+                
+                current_messages.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": str(result)
+                })
+
+        except Exception as e:
+            await reply_func(f"Error: {str(e)}")
+            break
+
+    # --- Self-Reflection (Simplified for Headless) ---
+    if enable_self_reflection:
+        # Just trigger it silently or post to DB?
+        # For TG, maybe post it as a separate message?
+        pass
+
 # Scheduler Thread Function
 def scheduler_loop():
     print("Scheduler thread started.")
@@ -1542,6 +1875,37 @@ def scheduler_loop():
                                         "required": ["skill_name", "file_name", "function_name"]
                                     }
                                 }
+                            },
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "protocol_remember",
+                                    "description": "Store a user preference or fact into long-term memory.",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "key": {"type": "string"},
+                                            "value": {"type": "string"}
+                                        },
+                                        "required": ["key", "value"]
+                                    }
+                                }
+                            },
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": "protocol_learn_experience",
+                                    "description": "Save a solution to a problem as an 'Experience'.",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "problem": {"type": "string"},
+                                            "solution": {"type": "array", "items": {"type": "string"}},
+                                            "tags": {"type": "array", "items": {"type": "string"}}
+                                        },
+                                        "required": ["problem", "solution"]
+                                    }
+                                }
                             }]
                             
                             for plan in pending_plans:
@@ -1598,22 +1962,36 @@ def scheduler_loop():
                                                     call_id = tc['id']
                                                     
                                                     res_str = ""
-                                                    if func_name == 'execute_skill_function':
-                                                        try:
-                                                            args = json.loads(args_str)
-                                                            res_str = skill_manager.execute_skill_function(
-                                                                args.get('skill_name'), args.get('file_name'), 
-                                                                args.get('function_name'), args.get('kwargs', {})
-                                                            )
-                                                            success = True # If we executed code, assume some success
-                                                        except Exception as e:
-                                                            res_str = f"Error: {e}"
-                                                    
-                                                    messages.append({
-                                                        "role": "tool",
-                                                        "tool_call_id": call_id,
-                                                        "content": str(res_str)
-                                                    })
+                                                if func_name == 'execute_skill_function':
+                                                    try:
+                                                        args = json.loads(args_str)
+                                                        res_str = skill_manager.execute_skill_function(
+                                                            args.get('skill_name'), args.get('file_name'), 
+                                                            args.get('function_name'), args.get('kwargs', {})
+                                                        )
+                                                        success = True # If we executed code, assume some success
+                                                    except Exception as e:
+                                                        res_str = f"Error: {e}"
+                                                elif func_name == 'protocol_remember':
+                                                    try:
+                                                        args = json.loads(args_str)
+                                                        saved_path = protocol_brain.remember(args.get('key'), args.get('value'))
+                                                        res_str = f"Successfully remembered: {args.get('key')} = {args.get('value')}. Saved to {saved_path}"
+                                                        success = True
+                                                    except Exception as e: res_str = str(e)
+                                                elif func_name == 'protocol_learn_experience':
+                                                    try:
+                                                        args = json.loads(args_str)
+                                                        saved_path = protocol_brain.learn_experience(args.get('problem'), args.get('solution'), args.get('tags'))
+                                                        res_str = f"Experience learned and saved to {saved_path}."
+                                                        success = True
+                                                    except Exception as e: res_str = str(e)
+                                                
+                                                messages.append({
+                                                    "role": "tool",
+                                                    "tool_call_id": call_id,
+                                                    "content": str(res_str)
+                                                })
                                             else:
                                                 # Final response
                                                 summary = msg.get('content', 'No content')
@@ -1667,5 +2045,21 @@ if __name__ == '__main__':
     if os.environ.get('WERKZEUG_RUN_MAIN') != 'true':
         threading.Thread(target=scheduler_loop, daemon=True).start()
         threading.Timer(1.5, open_browser).start()
+
+        # Start Telegram Bot if Token is configured
+        try:
+            conn = get_db_connection()
+            settings_rows = conn.execute('SELECT * FROM settings').fetchall()
+            settings = {row['key']: row['value'] for row in settings_rows}
+            tg_token = settings.get('telegram_token')
+            conn.close()
+
+            if tg_token:
+                tg_bot = TelegramBot(tg_token, headless_chat_turn)
+                tg_bot.start_in_thread()
+            else:
+                print("Telegram Token not found in settings.")
+        except Exception as e:
+            print(f"Failed to start Telegram Bot: {e}")
         
     app.run(debug=False, port=port)

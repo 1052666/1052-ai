@@ -171,6 +171,12 @@
                                 <p class="help-text" style="margin-top: 8px;">请将此地址填入飞书后台的“请求网址”栏。<strong>注意：飞书要求此地址必须公网可访问 (如使用 ngrok)。</strong></p>
                             </div>
                             
+                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                                <label for="telegram-token" style="margin-bottom: 5px; display: block;">Telegram Bot Token</label>
+                                <input type="password" id="telegram-token" placeholder="Enter your Telegram Bot Token (from @BotFather)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-secondary); color: var(--text-primary);">
+                                <p class="help-text" style="margin-top: 5px;">配置 Token 后重启应用，AI 将自动接入 Telegram。</p>
+                            </div>
+                            
                             <div style="margin-top: 20px; text-align: right;">
                                 <button id="save-social-btn" class="primary-btn">保存社交配置</button>
                             </div>
@@ -321,6 +327,7 @@
                 document.getElementById('feishu-app-id').value = settings.feishu_app_id || '';
                 document.getElementById('feishu-app-secret').value = settings.feishu_app_secret || '';
                 document.getElementById('feishu-verification-token').value = settings.feishu_verification_token || '';
+                document.getElementById('telegram-token').value = settings.telegram_token || '';
 
                 // Calculate Webhook URL
                 const protocol = window.location.protocol;
@@ -868,18 +875,20 @@
 
             // Social Settings Save
             document.getElementById('save-social-btn').addEventListener('click', async () => {
-                const appId = document.getElementById('feishu-app-id').value.trim();
-                const appSecret = document.getElementById('feishu-app-secret').value.trim();
-                const token = document.getElementById('feishu-verification-token').value.trim();
+                const feishuId = document.getElementById('feishu-app-id').value.trim();
+                const feishuSecret = document.getElementById('feishu-app-secret').value.trim();
+                const feishuToken = document.getElementById('feishu-verification-token').value.trim();
+                const telegramToken = document.getElementById('telegram-token').value.trim();
 
                 try {
                     await fetch('/api/settings', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            feishu_app_id: appId,
-                            feishu_app_secret: appSecret,
-                            feishu_verification_token: token
+                            feishu_app_id: feishuId,
+                            feishu_app_secret: feishuSecret,
+                            feishu_verification_token: feishuToken,
+                            telegram_token: telegramToken
                         })
                     });
                     await showCustomAlert('飞书配置已保存');

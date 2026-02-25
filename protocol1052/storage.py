@@ -27,26 +27,30 @@ class Storage:
         with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def save_memory(self, memory: Memory):
+    def save_memory(self, memory):
         filename = f"1052_memory_{memory.user_id}.json"
         path = os.path.join(self.memory_dir, filename)
-        # Convert dataclass to dict, handling nested dataclasses
-        # Since we used asdict in to_dict method of Memory class, we rely on that or use asdict here
-        # But we need to make sure to_dict handles nested objects recursively if they are dataclasses
-        # dataclasses.asdict does this automatically.
+        
+        # Use dataclasses.asdict to ensure recursive conversion
         from dataclasses import asdict
-        self._save_json(path, asdict(memory))
+        data = asdict(memory)
+        
+        self._save_json(path, data)
+        return path
 
     def load_memory(self, user_id: str) -> Optional[Dict]:
         filename = f"1052_memory_{user_id}.json"
         path = os.path.join(self.memory_dir, filename)
-        return self._load_json(path)
+        if os.path.exists(path):
+            return self._load_json(path)
+        return None
 
-    def save_experience(self, experience: Experience):
+    def save_experience(self, experience):
         filename = f"1052_exp_{experience.exp_id}.json"
         path = os.path.join(self.experience_dir, filename)
         from dataclasses import asdict
         self._save_json(path, asdict(experience))
+        return path
 
     def load_experience(self, exp_id: str) -> Optional[Dict]:
         filename = f"1052_exp_{exp_id}.json"

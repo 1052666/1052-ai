@@ -26,27 +26,45 @@ class Protocol1052:
         self.memory.updated_at = datetime.datetime.now().isoformat()
         self.storage.save_memory(self.memory)
 
-    def set_preference(self, key: str, value):
+    def remember(self, key: str, value):
+        """
+        Store a user preference or fact into long-term memory.
+        """
         if hasattr(self.memory.preferences, key):
             setattr(self.memory.preferences, key, value)
+        elif key == "nickname":
+            self.memory.basic.nickname = value
         else:
             self.memory.preferences.custom[key] = value
-        self.save_memory()
+        
+        saved_path = self.storage.save_memory(self.memory)
+        # Ensure updated_at is refreshed
+        self.memory.updated_at = datetime.datetime.now().isoformat()
+        return saved_path
 
-    def get_preference(self, key: str):
-        if hasattr(self.memory.preferences, key):
-            return getattr(self.memory.preferences, key)
-        return self.memory.preferences.custom.get(key)
-
-    def add_experience(self, problem: str, solution: List[str], tags: List[str] = None):
+    def learn_experience(self, problem: str, solution: List[str], tags: List[str] = None):
+        """
+        Save a solution to a problem as an 'Experience'.
+        """
         exp = Experience(
             problem=problem,
             solution=solution,
             tags=tags or [],
             scene=Scene(device="pc", system=os.name, env="python_client")
         )
-        self.storage.save_experience(exp)
-        return exp.exp_id
+        saved_path = self.storage.save_experience(exp)
+        return saved_path
+
+    def set_preference(self, key: str, value):
+        self.remember(key, value)
+        
+    def get_preference(self, key: str):
+        if hasattr(self.memory.preferences, key):
+            return getattr(self.memory.preferences, key)
+        if key == "nickname":
+            return self.memory.basic.nickname
+        return self.memory.preferences.custom.get(key)
+
 
     def search_experience(self, query: str) -> List[Dict]:
         # Simple keyword search

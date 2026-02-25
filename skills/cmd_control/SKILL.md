@@ -37,12 +37,37 @@ Writes text to a file.
 *   `mode` (str): 'w' (overwrite) or 'a' (append).
 *   `encoding` (str): Defaults to 'utf-8'.
 
-#### 4. `read_file(file_path, encoding='utf-8', limit=2000)`
+#### 4. `read_file(file_path, encoding='utf-8', limit=5000)`
 Reads text from a file.
 *   `file_path` (str): Absolute path to the file.
 *   `limit` (int): Max characters to read.
 
-#### 5. `execute_python_code(code)`
+#### 5. `list_directory(path, recursive=False, limit=100)`
+Lists files and directories.
+*   `path` (str): The directory to list.
+*   `recursive` (bool): Whether to search recursively (default: False).
+*   `limit` (int): Max number of items (default: 100).
+
+#### 6. `delete_file(file_path)`
+Deletes a file or directory.
+*   `file_path` (str): Absolute path.
+
+#### 7. `move_file(src_path, dest_path)`
+Moves or renames a file/directory.
+*   `src_path` (str): Source path.
+*   `dest_path` (str): Destination path.
+
+#### 8. `copy_file(src_path, dest_path)`
+Copies a file or directory.
+*   `src_path` (str): Source path.
+*   `dest_path` (str): Destination path.
+
+#### 9. `search_files(directory, pattern)`
+Searches for files matching a glob pattern.
+*   `directory` (str): Search root.
+*   `pattern` (str): Glob pattern (e.g., `*.py`, `**/*.txt`).
+
+#### 10. `execute_python_code(code)`
 Executes arbitrary Python code.
 *   `code` (str): The Python code to run. Use `print()` to output results.
 *   **WARNING**: This gives the AI full access to the Python environment.
