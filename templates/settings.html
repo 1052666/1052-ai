@@ -145,61 +145,43 @@
                     <!-- Social Settings Section -->
                     <div id="social-settings" class="settings-page-section" style="display: none;">
                         <div class="settings-section">
-                            <h3>飞书机器人配置</h3>
-                            <div class="form-group">
-                                <label for="feishu-app-id">App ID</label>
-                                <input type="text" id="feishu-app-id" placeholder="cli_..." autocomplete="off">
-                                <p class="help-text">在飞书开放平台“凭证与基础信息”中获取。</p>
-                            </div>
-                            <div class="form-group">
-                                <label for="feishu-app-secret">App Secret</label>
-                                <input type="password" id="feishu-app-secret" placeholder="..." autocomplete="off">
-                                <p class="help-text">在飞书开放平台“凭证与基础信息”中获取。</p>
-                            </div>
-                            <div class="form-group">
-                                <label for="feishu-verification-token">Verification Token</label>
-                                <input type="text" id="feishu-verification-token" placeholder="..." autocomplete="off">
-                                <p class="help-text">在飞书开放平台“事件订阅”中查看。</p>
-                            </div>
+                            <h3><i class="fas fa-share-alt"></i> 社交平台接入</h3>
+                            <p class="help-text">配置第三方平台机器人，让 1052 AI 随时随地为您服务。</p>
                             
-                            <div class="form-group" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
-                                <label style="margin-bottom: 5px; display: block;">您的请求网址 (Webhook URL)</label>
-                                <div style="display: flex; gap: 10px; align-items: center;">
-                                    <input type="text" id="feishu-webhook-url" readonly style="background: #e0e0e0; color: #555; cursor: default; flex-grow: 1;">
-                                    <button class="secondary-btn" id="copy-webhook-btn">复制</button>
+                            <div class="platforms-grid">
+                                <!-- Feishu Card -->
+                                <div class="platform-card">
+                                    <div class="platform-icon feishu-icon">
+                                        <i class="fas fa-comment-dots"></i>
+                                    </div>
+                                    <div class="platform-info">
+                                        <h4>飞书 (Feishu)</h4>
+                                        <p>企业级协作平台，支持群聊和单聊。</p>
+                                        <span class="status-badge" id="feishu-status">未配置</span>
+                                    </div>
+                                    <div class="platform-action">
+                                        <button class="icon-btn config-social-btn" data-target="feishu-modal">
+                                            <i class="fas fa-cog"></i> 配置
+                                        </button>
+                                    </div>
                                 </div>
-                                <p class="help-text" style="margin-top: 8px;">请将此地址填入飞书后台的“请求网址”栏。<strong>注意：飞书要求此地址必须公网可访问 (如使用 ngrok)。</strong></p>
-                            </div>
-                            
-                            <div class="form-group" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
-                                <label for="telegram-token" style="margin-bottom: 5px; display: block;">Telegram Bot Token</label>
-                                <input type="password" id="telegram-token" placeholder="Enter your Telegram Bot Token (from @BotFather)" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-secondary); color: var(--text-primary);">
-                                <p class="help-text" style="margin-top: 5px;">配置 Token 后重启应用，AI 将自动接入 Telegram。</p>
-                            </div>
-                            
-                            <div style="margin-top: 20px; text-align: right;">
-                                <button id="save-social-btn" class="primary-btn">保存社交配置</button>
-                            </div>
-                        </div>
 
-                        <div class="settings-section" style="margin-top: 20px;">
-                            <h3><i class="fas fa-book"></i> 接入指南</h3>
-                            <div style="background: var(--bg-secondary); padding: 15px; border-radius: 8px;">
-                                <ol style="padding-left: 20px; color: var(--text-secondary); line-height: 1.8;">
-                                    <li>登录 <a href="https://open.feishu.cn/" target="_blank" style="color: var(--accent-color);">飞书开放平台</a>，创建“企业自建应用”。</li>
-                                    <li>在 <strong>凭证与基础信息</strong> 中获取 <code>App ID</code> 和 <code>App Secret</code>，填入上方配置。</li>
-                                    <li>在 <strong>添加应用能力</strong> 中启用“机器人”。</li>
-                                    <li>在 <strong>权限管理</strong> 中开通以下权限，并发布版本：
-                                        <ul style="margin: 5px 0;">
-                                            <li><code>im:message</code> (获取单聊消息)</li>
-                                            <li><code>im:message.group_at_msg</code> (获取群聊消息)</li>
-                                            <li><code>im:message:send_as_bot</code> (以应用身份发消息)</li>
-                                        </ul>
-                                    </li>
-                                    <li>在 <strong>事件订阅</strong> 中配置请求网址 (使用上方的 Webhook URL)。</li>
-                                    <li>获取 <strong>Verification Token</strong> 并填入上方配置。</li>
-                                    <li>最后，点击“发布版本”使应用生效。</li>
-                                </ol>
+                                <!-- Telegram Card -->
+                                <div class="platform-card">
+                                    <div class="platform-icon telegram-icon">
+                                        <i class="fab fa-telegram-plane"></i>
+                                    </div>
+                                    <div class="platform-info">
+                                        <h4>Telegram</h4>
+                                        <p>全球流行的即时通讯软件，安全快速。</p>
+                                        <span class="status-badge" id="telegram-status">未配置</span>
+                                    </div>
+                                    <div class="platform-action">
+                                        <button class="icon-btn config-social-btn" data-target="telegram-modal">
+                                            <i class="fas fa-cog"></i> 配置
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -268,12 +250,151 @@
         </div>
     </div>
 
+    <!-- Feishu Modal -->
+    <div id="feishu-modal" class="modal">
+        <div class="modal-content" style="width: 600px;">
+            <div class="modal-header">
+                <h3>飞书机器人配置</h3>
+                <span class="close-modal" data-target="feishu-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <div class="modal-tab active" data-tab="feishu-config">配置</div>
+                    <div class="modal-tab" data-tab="feishu-guide">接入指南</div>
+                </div>
+
+                <div id="feishu-config" class="tab-content active">
+                    <div class="form-group">
+                        <label for="feishu-app-id">App ID</label>
+                        <input type="text" id="feishu-app-id" placeholder="cli_..." autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="feishu-app-secret">App Secret</label>
+                        <input type="password" id="feishu-app-secret" placeholder="..." autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="feishu-verification-token">Verification Token</label>
+                        <input type="text" id="feishu-verification-token" placeholder="..." autocomplete="off">
+                    </div>
+                    <div class="form-group" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <label style="margin-bottom: 5px; display: block;">您的请求网址 (Webhook URL)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="feishu-webhook-url" readonly style="background: #e0e0e0; color: #555; cursor: default; flex-grow: 1;">
+                            <button class="secondary-btn" id="copy-webhook-btn">复制</button>
+                        </div>
+                        <p class="help-text" style="margin-top: 8px;">请将此地址填入飞书后台的“请求网址”栏。<strong>注意：飞书要求此地址必须公网可访问 (如使用 ngrok)。</strong></p>
+                    </div>
+                    <div style="text-align: right; margin-top: 20px;">
+                        <button id="save-feishu-btn" class="primary-btn">保存飞书配置</button>
+                    </div>
+                </div>
+
+                <div id="feishu-guide" class="tab-content">
+                    <div class="guide-step">
+                        <strong>1. 创建应用</strong>
+                        登录 <a href="https://open.feishu.cn/" target="_blank" style="color: var(--accent-color);">飞书开放平台</a>，创建“企业自建应用”。
+                    </div>
+                    <div class="guide-step">
+                        <strong>2. 获取凭证</strong>
+                        在 <strong>凭证与基础信息</strong> 中获取 <code>App ID</code> 和 <code>App Secret</code>。
+                    </div>
+                    <div class="guide-step">
+                        <strong>3. 启用机器人</strong>
+                        在 <strong>添加应用能力</strong> 中启用“机器人”。
+                    </div>
+                    <div class="guide-step">
+                        <strong>4. 配置权限</strong>
+                        在 <strong>权限管理</strong> 中开通以下权限：
+                        <ul style="margin: 5px 0 5px 20px;">
+                            <li><code>im:message</code> (获取单聊消息)</li>
+                            <li><code>im:message.group_at_msg</code> (获取群聊消息)</li>
+                            <li><code>im:message:send_as_bot</code> (以应用身份发消息)</li>
+                        </ul>
+                        然后点击“发布版本”。
+                    </div>
+                    <div class="guide-step">
+                        <strong>5. 事件订阅</strong>
+                        在 <strong>事件订阅</strong> 中配置请求网址 (使用配置页的 Webhook URL)。<br>
+                        获取 <strong>Verification Token</strong> 并填入配置。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Telegram Modal -->
+    <div id="telegram-modal" class="modal">
+        <div class="modal-content" style="width: 500px;">
+            <div class="modal-header">
+                <h3>Telegram 机器人配置</h3>
+                <span class="close-modal" data-target="telegram-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <div class="modal-tab active" data-tab="telegram-config">配置</div>
+                    <div class="modal-tab" data-tab="telegram-guide">接入指南</div>
+                </div>
+
+                <div id="telegram-config" class="tab-content active">
+                    <div class="form-group">
+                        <label for="telegram-token">Telegram Bot Token</label>
+                        <input type="password" id="telegram-token" placeholder="Enter your Telegram Bot Token" style="width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background-color: var(--bg-primary); color: var(--text-primary);">
+                    </div>
+                    <div style="text-align: right; margin-top: 20px;">
+                        <button id="save-telegram-btn" class="primary-btn">保存 Telegram 配置</button>
+                    </div>
+                </div>
+
+                <div id="telegram-guide" class="tab-content">
+                    <div class="guide-step">
+                        <strong>1. 寻找 BotFather</strong>
+                        在 Telegram 中搜索 <code>@BotFather</code> 并开始对话。
+                    </div>
+                    <div class="guide-step">
+                        <strong>2. 创建新机器人</strong>
+                        发送指令 <code>/newbot</code>，按照提示输入机器人的名称和用户名。
+                    </div>
+                    <div class="guide-step">
+                        <strong>3. 获取 Token</strong>
+                        创建成功后，BotFather 会发送一串 API Token，将其复制并填入配置。
+                    </div>
+                    <div class="guide-step">
+                        <strong>4. 重启生效</strong>
+                        保存配置后，建议重启本应用以确保连接生效。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/common.js"></script>
     <script>
         // Custom UI Helpers (Implemented in common.js)
  
         // Settings Page Logic
         document.addEventListener('DOMContentLoaded', async () => {
+            
+            function updateSocialStatus(settings) {
+                const feishuStatus = document.getElementById('feishu-status');
+                const telegramStatus = document.getElementById('telegram-status');
+                
+                if (settings.feishu_app_id && settings.feishu_app_secret) {
+                    feishuStatus.textContent = '已配置';
+                    feishuStatus.classList.add('configured');
+                } else {
+                    feishuStatus.textContent = '未配置';
+                    feishuStatus.classList.remove('configured');
+                }
+                
+                if (settings.telegram_token) {
+                    telegramStatus.textContent = '已配置';
+                    telegramStatus.classList.add('configured');
+                } else {
+                    telegramStatus.textContent = '未配置';
+                    telegramStatus.classList.remove('configured');
+                }
+            }
+
             // Navigation Logic
             const navItems = document.querySelectorAll('.conversation-item');
             const sections = document.querySelectorAll('.settings-page-section');
@@ -333,6 +454,9 @@
                 const protocol = window.location.protocol;
                 const host = window.location.host;
                 document.getElementById('feishu-webhook-url').value = `${protocol}//${host}/api/feishu/event`;
+
+                // Update Social Status Badges
+                updateSocialStatus(settings);
 
             } catch (error) {
                 console.error('Failed to load settings:', error);
@@ -873,12 +997,50 @@
                 }
             });
 
-            // Social Settings Save
-            document.getElementById('save-social-btn').addEventListener('click', async () => {
+            // Social Settings Logic (New)
+            const configBtns = document.querySelectorAll('.config-social-btn');
+            const closeButtons = document.querySelectorAll('.close-modal');
+            const tabs = document.querySelectorAll('.modal-tab');
+
+            configBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.dataset.target;
+                    const modal = document.getElementById(targetId);
+                    if (modal) modal.style.display = 'block';
+                });
+            });
+
+            closeButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const targetId = btn.dataset.target;
+                    if (targetId) {
+                        const modal = document.getElementById(targetId);
+                        if (modal) modal.style.display = 'none';
+                    }
+                });
+            });
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    const parentHeader = tab.parentElement;
+                    const siblings = parentHeader.querySelectorAll('.modal-tab');
+                    siblings.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    
+                    const targetId = tab.dataset.tab;
+                    const modalBody = parentHeader.parentElement;
+                    const contents = modalBody.querySelectorAll('.tab-content');
+                    contents.forEach(c => c.classList.remove('active'));
+                    
+                    const targetContent = document.getElementById(targetId);
+                    if (targetContent) targetContent.classList.add('active');
+                });
+            });
+
+            document.getElementById('save-feishu-btn').addEventListener('click', async () => {
                 const feishuId = document.getElementById('feishu-app-id').value.trim();
                 const feishuSecret = document.getElementById('feishu-app-secret').value.trim();
                 const feishuToken = document.getElementById('feishu-verification-token').value.trim();
-                const telegramToken = document.getElementById('telegram-token').value.trim();
 
                 try {
                     await fetch('/api/settings', {
@@ -887,13 +1049,47 @@
                         body: JSON.stringify({
                             feishu_app_id: feishuId,
                             feishu_app_secret: feishuSecret,
-                            feishu_verification_token: feishuToken,
+                            feishu_verification_token: feishuToken
+                        })
+                    });
+                    
+                    // Update status badge
+                    updateSocialStatus({
+                        feishu_app_id: feishuId,
+                        feishu_app_secret: feishuSecret,
+                        telegram_token: document.getElementById('telegram-token').value.trim() // Keep existing
+                    });
+                    
+                    document.getElementById('feishu-modal').style.display = 'none';
+                    await showCustomAlert('飞书配置已保存');
+                } catch (error) {
+                    console.error('Failed to save feishu settings:', error);
+                    showCustomAlert('保存失败。');
+                }
+            });
+
+            document.getElementById('save-telegram-btn').addEventListener('click', async () => {
+                const telegramToken = document.getElementById('telegram-token').value.trim();
+
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
                             telegram_token: telegramToken
                         })
                     });
-                    await showCustomAlert('飞书配置已保存');
+                    
+                    updateSocialStatus({
+                        feishu_app_id: document.getElementById('feishu-app-id').value.trim(),
+                        feishu_app_secret: document.getElementById('feishu-app-secret').value.trim(),
+                        telegram_token: telegramToken
+                    });
+                    
+                    document.getElementById('telegram-modal').style.display = 'none';
+                    await showCustomAlert('Telegram 配置已保存');
                 } catch (error) {
-                    console.error('Failed to save social settings:', error);
+                    console.error('Failed to save telegram settings:', error);
                     showCustomAlert('保存失败。');
                 }
             });

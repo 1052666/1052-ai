@@ -85,80 +85,90 @@ class SkillManager:
     def execute_skill_function(self, skill_name, file_name, function_name, kwargs):
         """
         Dynamically load a python module and execute a function.
-        If file_name is not provided or incorrect, tries to find the function in any .py file in the skill folder.
-        
-        Args:
-            skill_name (str): Name of the skill (folder name).
-            file_name (str): Name of the python file (e.g. 'utils.py').
-            function_name (str): Name of the function to call.
-            kwargs (dict): Arguments for the function.
+        Supports hot-reloading: Always re-imports the module to pick up latest code changes.
         """
+        # Always reload skills definitions to catch new folders
+        self.load_skills()
+        
         if skill_name not in self.skills:
             return f"Error: Skill '{skill_name}' not found."
             
         skill_info = self.skills[skill_name]
         
-        # Helper to try loading a module and finding a function
-        def try_load_and_execute(f_path):
+        # Helper to load a module and find a function
+        def load_and_execute(f_path, func_name, func_kwargs):
             if not os.path.exists(f_path):
                 return None, f"File '{f_path}' not found."
             
             try:
-                # Load module
-                module_name = f"dynamic_skill_{skill_name}_{os.path.basename(f_path)[:-3]}"
+                # Use a unique module name based on file path and timestamp to force reload
+                # Or just use importlib.reload if module exists? 
+                # Since we want to support 'hot' code changes without restarting app,
+                # we should probably just re-load from spec every time.
+                # Python caches modules in sys.modules. We need to bypass or update it.
+                
+                module_name = f"skill_{skill_name}_{os.path.basename(f_path).replace('.', '_')}"
+                
                 spec = importlib.util.spec_from_file_location(module_name, f_path)
                 if spec and spec.loader:
                     module = importlib.util.module_from_spec(spec)
+                    
+                    # Force reload: Remove old module if exists
+                    if module_name in sys.modules:
+                        del sys.modules[module_name]
+                    
                     sys.modules[module_name] = module
                     spec.loader.exec_module(module)
                     
-                    # Get function
-                    if not hasattr(module, function_name):
-                        return None, f"Function '{function_name}' not found in {os.path.basename(f_path)}."
+                    if not hasattr(module, func_name):
+                        return None, f"Function '{func_name}' not found in {os.path.basename(f_path)}."
                     
-                    func = getattr(module, function_name)
+                    func = getattr(module, func_name)
                     
                     # Execute
-                    result = func(**kwargs)
+                    # Inspect function signature to handle kwargs mismatch?
+                    # For now, assume kwargs match.
+                    result = func(**func_kwargs)
                     return str(result), None
                 else:
-                    return None, "Error: Could not load module."
+                    return None, f"Error: Could not load module spec for {f_path}"
             except Exception as e:
-                traceback.print_exc()
-                return None, f"Error executing skill function: {str(e)}"
+                # traceback.print_exc()
+                return None, f"Error executing {func_name} in {os.path.basename(f_path)}: {str(e)}"
 
-        # 1. Try with the provided file_name (if it looks valid)
-        if skill_info['type'] == 'folder':
-            if file_name:
-                # Handle cases where AI forgets .py extension
-                if not file_name.endswith('.py'):
-                    file_name += '.py'
-                
-                target_path = os.path.join(skill_info['path'], file_name)
-                res, err = try_load_and_execute(target_path)
-                if res is not None:
-                    return res
-                # If file not found, we fall through to auto-discovery
+        # 1. Try with specific file_name
+        if file_name:
+            if not file_name.endswith('.py'):
+                file_name += '.py'
             
-            # 2. Auto-discovery: Scan all .py files in the folder for the function
-            py_files = [f for f in os.listdir(skill_info['path']) if f.endswith('.py') and not f.startswith('__')]
-            
-            # Heuristic: Try files that look like the skill name or 'main'/'executor' first
-            priority_files = [f"{skill_name}.py", "main.py", "executor.py", "utils.py"]
-            sorted_py_files = sorted(py_files, key=lambda x: 0 if x in priority_files else 1)
-            
-            for py_file in sorted_py_files:
-                target_path = os.path.join(skill_info['path'], py_file)
-                res, err = try_load_and_execute(target_path)
-                if res is not None:
-                    return res # Found and executed!
-            
-            return f"Error: Function '{function_name}' not found in any Python file in skill '{skill_name}'."
-
-        else:
-            # Single file skill
-            target_path = skill_info['path']
-            res, err = try_load_and_execute(target_path)
+            target_path = os.path.join(skill_info['path'], file_name)
+            res, err = load_and_execute(target_path, function_name, kwargs)
             if res is not None:
                 return res
-            return err
+            if err and "Function" in err: # File found but function not found
+                return err 
+            # If file not found, fall through to auto-discovery? 
+            # User might have guessed wrong file name.
+        
+        # 2. Auto-discovery (scan all .py files)
+        if skill_info['type'] == 'folder':
+            py_files = [f for f in os.listdir(skill_info['path']) if f.endswith('.py') and not f.startswith('__')]
+            
+            # Prioritize common names
+            priority = [f"{skill_name}.py", "main.py", "executor.py", "utils.py"]
+            # Sort: priority files first, then alphabetical
+            py_files.sort(key=lambda x: (0 if x in priority else 1, x))
+            
+            for py_file in py_files:
+                target_path = os.path.join(skill_info['path'], py_file)
+                # Only try if we haven't tried this specific file yet (if file_name matched it)
+                if file_name and py_file == file_name: 
+                    continue
+                    
+                res, err = load_and_execute(target_path, function_name, kwargs)
+                if res is not None:
+                    return res
+            
+            return f"Error: Function '{function_name}' not found in any Python file in skill '{skill_name}'."
+            
+        return f"Error: Could not execute skill {skill_name}"

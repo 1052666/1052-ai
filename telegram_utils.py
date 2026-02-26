@@ -30,21 +30,30 @@ class TelegramBot:
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_message(chat_id=update.effective_chat.id, text="你好！我是 1052 AI。请直接发送消息与我对话。")
 
-    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user_id = str(update.effective_chat.id)
-        user_message = update.message.text
+    async def handle_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        command = update.message.text.split()[0]
         
-        if not user_message:
+        if command == '/new':
+            user_id = str(update.effective_chat.id)
+            # We need to tell the agent to clear memory for this user/chat
+            # Since we don't have direct access to the DB here easily, we can pass a special message to the agent_callback
+            # Or we can handle it here if we import get_db_connection (but that creates circular import potentially if not careful)
+            # Better: Send a special system instruction to the agent
+            
+            # Actually, the user wants to clear "Current Conversation Memory".
+            # In our system, conversation is based on conversation_id.
+            # For TG, we usually map user_id to a conversation_id.
+            # If we want to "clear", we should just create a NEW conversation_id for this user.
+            
+            # Let's pass a special flag to agent_callback?
+            # agent_callback signature: async def callback(user_id, message, reply_func)
+            # We can send a message "/new" and let the agent handle it.
+            
+            await self.agent_callback(user_id, "/new", self.create_reply_func(update, context))
             return
 
-        # Define a reply function that the agent can use to send messages back
+    def create_reply_func(self, update, context):
         async def reply_func(text):
-            # Telegram has a message length limit (4096 chars)
-            # Simple chunking
-            # IMPORTANT: We use None for parse_mode by default to avoid Markdown parsing errors
-            # which are very common with LLM output (e.g. unclosed asterisks, underscores inside words)
-            # Or we can try to escape it, but raw text is safer for stability.
-            
             chunk_size = 4000
             if len(text) > chunk_size:
                 for i in range(0, len(text), chunk_size):
@@ -57,16 +66,28 @@ class TelegramBot:
                     await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
                 except Exception as e:
                     print(f"TG Send Error: {e}")
+        return reply_func
+
+    async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = str(update.effective_chat.id)
+        user_message = update.message.text
+        
+        if not user_message:
+            return
+            
+        if user_message.startswith('/'):
+            # It's a command we didn't catch with CommandHandler?
+            # We should probably register /new as a command handler.
+            pass
 
         # Send "typing" action
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action='typing')
         
         # Call the agent
-        # Note: agent_callback might be long running, so we await it
         try:
-            await self.agent_callback(user_id, user_message, reply_func)
+            await self.agent_callback(user_id, user_message, self.create_reply_func(update, context))
         except Exception as e:
-            await reply_func(f"Error processing message: {str(e)}")
+            await self.create_reply_func(update, context)(f"Error processing message: {str(e)}")
 
     def run(self):
         """
@@ -83,9 +104,11 @@ class TelegramBot:
         self.application = ApplicationBuilder().token(self.token).build()
         
         start_handler = CommandHandler('start', self.start_command)
+        new_handler = CommandHandler('new', self.handle_command)
         message_handler = MessageHandler(filters.TEXT & (~filters.COMMAND), self.handle_message)
         
         self.application.add_handler(start_handler)
+        self.application.add_handler(new_handler)
         self.application.add_handler(message_handler)
         
         print("Starting Telegram Bot...")

@@ -5,12 +5,14 @@ import json
 import requests
 import datetime
 import asyncio
+import aiohttp
 import zipfile
 import shutil
 import threading
 import time
 import inspect
 import webbrowser
+import uuid
 from telegram_utils import TelegramBot
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
@@ -19,7 +21,171 @@ from mcp.client.stdio import stdio_client
 from mcp.types import CallToolResult, TextContent
 from skill_manager import SkillManager
 from feishu_utils import FeishuBot
+import core_skills
 from protocol1052.client import Protocol1052
+
+# --- Core Tools Schema ---
+CORE_TOOLS_SCHEMA = [
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_command",
+            "description": "Execute a shell command on the system (Windows CMD). Use this for system control, running scripts, installing packages, etc.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "The command to run."},
+                    "cwd": {"type": "string", "description": "Optional working directory."}
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_file",
+            "description": "Read the content of a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the file."}
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "write_file",
+            "description": "Write content to a file (overwrites by default).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the file."},
+                    "content": {"type": "string", "description": "Content to write."}
+                },
+                "required": ["file_path", "content"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_directory",
+            "description": "Create a new directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Path to create."}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_directory",
+            "description": "List files and directories in a path.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Directory path."},
+                    "recursive": {"type": "boolean", "description": "List recursively?"},
+                    "limit": {"type": "integer", "description": "Max items to return."}
+                },
+                "required": ["path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_file",
+            "description": "Delete a file or directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to delete."}
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_file_info",
+            "description": "Get detailed info (size, date, hash) of a file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to file."}
+                },
+                "required": ["file_path"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_skill",
+            "description": "Create a new skill package in the skills directory. Use this to add new capabilities to yourself.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {"type": "string", "description": "Name of the skill (folder name, no spaces)."},
+                    "files": {
+                        "type": "object",
+                        "description": "Dictionary of filename -> content.",
+                        "additionalProperties": {"type": "string"}
+                    }
+                },
+                "required": ["skill_name", "files"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_scheduled_task",
+            "description": "Schedule a task/reminder for a future time.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "description": "What to remind/do."},
+                    "time": {"type": "string", "description": "Time (YYYY-MM-DD HH:MM:SS)."}
+                },
+                "required": ["content", "time"]
+            }
+        }
+    }
+]
+
+def execute_core_tool(func_name, func_args):
+    """Executes a core tool function."""
+    if func_name == 'execute_command':
+        return core_skills.execute_command(func_args.get('command'), func_args.get('cwd'))
+    elif func_name == 'read_file':
+        return core_skills.read_file(func_args.get('file_path'))
+    elif func_name == 'write_file':
+        return core_skills.write_file(func_args.get('file_path'), func_args.get('content'))
+    elif func_name == 'create_directory':
+        return core_skills.create_directory(func_args.get('path'))
+    elif func_name == 'list_directory':
+        return core_skills.list_directory(func_args.get('path'), func_args.get('recursive', False))
+    elif func_name == 'delete_file':
+        return core_skills.delete_file(func_args.get('file_path'))
+    elif func_name == 'get_file_info':
+        return core_skills.get_file_info(func_args.get('file_path'))
+    elif func_name == 'create_skill':
+        return core_skills.create_skill(func_args.get('skill_name'), func_args.get('files'))
+    elif func_name == 'add_scheduled_task':
+        return core_skills.add_scheduled_task(func_args.get('content'), func_args.get('time'), func_args.get('_conversation_id'))
+    return None
+
 
 # --- Path Configuration for EXE ---
 if getattr(sys, 'frozen', False):
@@ -96,6 +262,14 @@ skill_manager = SkillManager(skills_dir=SKILLS_DIR)
 DEFAULT_USER_ID = "owner"
 protocol_brain = Protocol1052(user_id=DEFAULT_USER_ID, storage_root=PROTOCOL_DIR)
 
+# --- Interruption Signals ---
+# Map conversation_id -> current_request_id (UUID)
+# When a new request comes in for a conversation, we update this value.
+# The running task checks if its request_id matches the current one. If not, it aborts.
+CONVERSATION_SIGNALS = {}
+
+class TaskInterrupted(Exception):
+    pass
 
 def get_db_connection():
     conn = sqlite3.connect(DB_FILE)
@@ -650,7 +824,17 @@ def process_feishu_message_thread(sender_id, user_text):
             
             # Find or Create Conversation
             conv_title = f"Feishu_{sender_id}"
-            conv = conn.execute('SELECT id FROM conversations WHERE title = ?', (conv_title,)).fetchone()
+            
+            # Special command handling for new conversation
+            if user_text.strip() == "/new":
+                # Force create new conversation
+                cursor = conn.execute('INSERT INTO conversations (title) VALUES (?)', (conv_title,))
+                conversation_id = cursor.lastrowid
+                conn.commit()
+                bot.send_message("open_id", sender_id, "text", "✅ 已开启新会话，上下文已重置。")
+                return
+
+            conv = conn.execute('SELECT id FROM conversations WHERE title = ? ORDER BY created_at DESC LIMIT 1', (conv_title,)).fetchone()
             
             if not conv:
                 cursor = conn.execute('INSERT INTO conversations (title) VALUES (?)', (conv_title,))
@@ -750,9 +934,17 @@ def process_feishu_message_thread(sender_id, user_text):
                 
                 current_messages = messages_payload.copy()
                 
+                # --- Interruption Setup ---
+                current_request_id = str(uuid.uuid4())
+                CONVERSATION_SIGNALS[conversation_id] = current_request_id
+                
                 final_content = ""
                 
                 while True:
+                    if CONVERSATION_SIGNALS.get(conversation_id) != current_request_id:
+                        bot.send_message("open_id", sender_id, "text", "[Task Interrupted]")
+                        break
+
                     payload = {
                         'model': model,
                         'messages': current_messages,
@@ -762,7 +954,7 @@ def process_feishu_message_thread(sender_id, user_text):
                         payload['tools'] = tools
                         payload['tool_choice'] = 'auto'
                         
-                    response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=120)
+                    response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=300)
                     response.raise_for_status()
                     res_json = response.json()
                     
@@ -784,6 +976,9 @@ def process_feishu_message_thread(sender_id, user_text):
                     
                     # Execute Tools
                     for tool_call in tool_calls:
+                        if CONVERSATION_SIGNALS.get(conversation_id) != current_request_id:
+                            break
+
                         func_name = tool_call['function']['name']
                         args_str = tool_call['function']['arguments']
                         call_id = tool_call['id']
@@ -794,7 +989,12 @@ def process_feishu_message_thread(sender_id, user_text):
                             func_args = {}
                             
                         result = ""
-                        if func_name in server_map:
+                        
+                        # Try Core Tools First
+                        core_result = execute_core_tool(func_name, func_args)
+                        if core_result is not None:
+                            result = core_result
+                        elif func_name in server_map:
                             try:
                                 result = loop.run_until_complete(run_mcp_tool(server_map[func_name], func_name, func_args))
                             except Exception as e:
@@ -918,7 +1118,8 @@ def chat():
     api_key = settings.get('api_key')
     base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
     model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
-    enable_system_control = settings.get('enable_system_control') == 'true'
+    # Default to True if not set (first run)
+    enable_system_control = settings.get('enable_system_control', 'true') == 'true'
     enable_self_reflection = settings.get('enable_self_reflection') == 'true'
     model_provider = settings.get('model_provider', 'openai')
     
@@ -931,6 +1132,14 @@ def chat():
     history = conn.execute('SELECT role, content FROM messages WHERE conversation_id = ? ORDER BY created_at ASC', (conversation_id,)).fetchall()
     conn.close()
     
+    # --- Interruption Setup ---
+    current_request_id = str(uuid.uuid4())
+    CONVERSATION_SIGNALS[conversation_id] = current_request_id
+    
+    def check_interrupt():
+        if CONVERSATION_SIGNALS.get(conversation_id) != current_request_id:
+            raise TaskInterrupted("Interrupted by new request")
+
     # Load system prompt
     system_prompt = ""
     system_prompt_path = os.path.join(DATA_DIR, 'system_prompt.md')
@@ -960,6 +1169,14 @@ def chat():
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
     }
+    
+    # --- Interruption Setup ---
+    current_request_id = str(uuid.uuid4())
+    CONVERSATION_SIGNALS[conversation_id] = current_request_id
+    
+    def check_interrupt():
+        if CONVERSATION_SIGNALS.get(conversation_id) != current_request_id:
+            raise TaskInterrupted("Interrupted by new request")
 
     def generate():
         # Async wrapper to run async code in sync generator
@@ -968,14 +1185,15 @@ def chat():
         
         try:
             # 1. Discover MCP tools
+            check_interrupt()
             mcp_tools, server_map = loop.run_until_complete(get_all_mcp_tools())
             
             # Load local skills (Descriptions only)
             skill_manager.load_skills()
             skills_description = skill_manager.get_all_skills_description()
             
-            # Add Generic Skill Executor Tool
-            local_tools = [{
+            # Add Core Tools & Generic Skill Executor Tool
+            local_tools = CORE_TOOLS_SCHEMA + [{
                 "type": "function",
                 "function": {
                     "name": "execute_skill_function",
@@ -1104,7 +1322,26 @@ def chat():
             
             # --- Time Context Injection ---
             now = datetime.datetime.now()
-            time_context = f"Current Time: {now.strftime('%Y-%m-%d %H:%M:%S')} ({now.strftime('%A')})\n\n"
+            # Force refresh of time context with explicit timezone
+            try:
+                # Use local system time with offset
+                import time
+                # Calculate offset in hours
+                if time.localtime().tm_isdst and time.daylight:
+                    offset_sec = -time.altzone
+                else:
+                    offset_sec = -time.timezone
+                    
+                offset_hours = offset_sec / 3600
+                sign = '+' if offset_hours >= 0 else ''
+                tz_str = f"UTC{sign}{int(offset_hours)}"
+            except:
+                tz_str = "Local System Time"
+            
+            time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+            weekday = now.strftime('%A')
+            time_context = f"Current System Time: {time_str} ({weekday})\n"
+            time_context += f"System Timezone: {tz_str}\n\n"
             
             # --- 1052 Protocol Context Injection ---
             # Inject Basic Info & Preferences into System Prompt
@@ -1155,8 +1392,12 @@ def chat():
                 # Call OpenAI
                 # print(f"Sending payload to LLM: {json.dumps(payload, indent=2)}")
                 try:
-                    response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, stream=True, timeout=120)
+                    check_interrupt()
+                    response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, stream=True, timeout=300)
                     response.raise_for_status()
+                except TaskInterrupted:
+                    yield json.dumps({"type": "error", "content": "\n[Task Interrupted by new message]"}) + "\n"
+                    return
                 except requests.exceptions.HTTPError as e:
                     error_content = response.text
                     yield json.dumps({"type": "error", "content": f"LLM API Error: {str(e)}\nDetails: {error_content}"}) + "\n"
@@ -1167,6 +1408,7 @@ def chat():
                 finish_reason = None
                 
                 for line in response.iter_lines():
+                    check_interrupt()
                     if not line: continue
                     line = line.decode('utf-8')
                     if not line.startswith('data: '): continue
@@ -1234,6 +1476,7 @@ def chat():
                 
                 # Execute tools
                 for tool_call in tool_calls:
+                    check_interrupt()
                     func_name = tool_call['function']['name']
                     func_args_str = tool_call['function']['arguments']
                     call_id = tool_call['id']
@@ -1241,7 +1484,10 @@ def chat():
                     try:
                         func_args = json.loads(func_args_str)
                     except:
-                        func_args = {} # Or handle error
+                        func_args = {}
+
+                    # Inject conversation_id for core tools that need it (like scheduler)
+                    func_args['_conversation_id'] = conversation_id # Or handle error
 
                     # Notify frontend
                     yield json.dumps({
@@ -1311,6 +1557,7 @@ def chat():
                     # Next time `generate` is called (next user message), memory_context will be re-read from disk.
                     
                 # Loop continues to next iteration to send tool outputs back to OpenAI
+                pass
                 
             # If we are here, it means we finished processing a turn (with or without tool calls)
             # If enable_self_reflection is ON, we should trigger a reflection step
@@ -1327,6 +1574,8 @@ def chat():
             # After the main response is done (no more tool calls), if enable_self_reflection is True:
             # We trigger a SECOND, invisible LLM call to analyze the situation.
             
+        except TaskInterrupted:
+            yield json.dumps({"type": "error", "content": "\n[Task Interrupted by new message]"}) + "\n"
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             yield json.dumps({"type": "error", "content": error_msg}) + "\n"
@@ -1337,6 +1586,7 @@ def chat():
             # Only run if enabled and no error occurred in main loop
             if enable_self_reflection and finish_reason == 'stop':
                 try:
+                    check_interrupt()
                     # We run this in a new loop or just sync since we are already in a generator?
                     # We need to yield output to frontend so user sees the "Evolution".
                     
@@ -1373,11 +1623,13 @@ def chat():
                     # but we simulate streaming for user experience?
                     # Or just stream normally and parse tool calls manually.
                     
-                    refl_response = requests.post(f"{base_url}/chat/completions", headers=headers, json=refl_payload, stream=True, timeout=120)
+                    check_interrupt()
+                    refl_response = requests.post(f"{base_url}/chat/completions", headers=headers, json=refl_payload, stream=True, timeout=300)
                     
                     reflection_tool_buffer = {}
                     
                     for line in refl_response.iter_lines():
+                        check_interrupt()
                         if not line: continue
                         line = line.decode('utf-8')
                         if not line.startswith('data: '): continue
@@ -1442,13 +1694,38 @@ def chat():
 
     return Response(stream_with_context(generate()), content_type='text/plain')
 
-async def headless_chat_turn(conversation_id, user_message, reply_func):
+async def headless_chat_turn(user_id, user_message, reply_func):
     """
     Process a chat turn without Flask context, suitable for Telegram/CLI.
     """
     conn = get_db_connection()
     
-    # 1. Save User Message
+    # Special command for new conversation
+    if user_message.strip() == "/new":
+        conn.execute('INSERT INTO conversations (title) VALUES (?)', (f"Telegram_{user_id}",))
+        conn.commit()
+        conn.close()
+        await reply_func("✅ 已开启新会话，上下文已重置。")
+        return
+
+    # Get conversation history
+    # We need to find the latest conversation for this user
+    # Telegram users don't have explicit conversation IDs in the message, 
+    # so we map user_id -> latest conversation
+    
+    # 1. Find latest conversation for this user
+    # We assume conversation title format "Telegram_{user_id}"
+    conv = conn.execute('SELECT id FROM conversations WHERE title = ? ORDER BY created_at DESC LIMIT 1', (f"Telegram_{user_id}",)).fetchone()
+    
+    if not conv:
+        # Create new one
+        cursor = conn.execute('INSERT INTO conversations (title) VALUES (?)', (f"Telegram_{user_id}",))
+        conversation_id = cursor.lastrowid
+        conn.commit()
+    else:
+        conversation_id = conv['id']
+    
+    # 2. Save User Message
     conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
                  (conversation_id, 'user', user_message))
     conn.commit()
@@ -1460,7 +1737,8 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
     api_key = settings.get('api_key')
     base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
     model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
-    enable_system_control = settings.get('enable_system_control') == 'true'
+    # Default to True
+    enable_system_control = settings.get('enable_system_control', 'true') == 'true'
     enable_self_reflection = settings.get('enable_self_reflection') == 'true'
     model_provider = settings.get('model_provider', 'openai')
     
@@ -1481,6 +1759,13 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
         'Authorization': f'Bearer {api_key}',
         'Content-Type': 'application/json'
     }
+    
+    # --- Interruption Setup ---
+    current_request_id = str(uuid.uuid4())
+    CONVERSATION_SIGNALS[conversation_id] = current_request_id
+    
+    def is_interrupted():
+        return CONVERSATION_SIGNALS.get(conversation_id) != current_request_id
 
     # Load system prompt
     system_prompt = ""
@@ -1502,7 +1787,18 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
     # --- Context Injection (Time & Memory) ---
     # (Copied from generate)
     now = datetime.datetime.now()
-    time_context = f"Current Time: {now.strftime('%Y-%m-%d %H:%M:%S')} ({now.strftime('%A')})\n\n"
+    try:
+        import time
+        offset = -time.timezone if (time.localtime().tm_isdst == 0) else -time.altzone
+        offset_hours = offset / 3600
+        tz_str = f"UTC{'+' if offset_hours >= 0 else ''}{int(offset_hours)}"
+    except:
+        tz_str = "Local System Time"
+        
+    time_str = now.strftime('%Y-%m-%d %H:%M:%S')
+    weekday = now.strftime('%A')
+    time_context = f"Current System Time: {time_str} ({weekday})\n"
+    time_context += f"System Timezone: {tz_str}\n\n"
     
     # Inject Skills Description
     skill_manager.load_skills()
@@ -1550,7 +1846,7 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
         mcp_tools = []
         server_map = {}
 
-    local_tools = [{
+    local_tools = CORE_TOOLS_SCHEMA + [{
         "type": "function",
         "function": {
             "name": "execute_skill_function",
@@ -1634,6 +1930,10 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
     
     # Turn Loop
     while True:
+        if is_interrupted():
+            await reply_func("\n[Task Interrupted by new message]")
+            break
+
         payload = {
             'model': model,
             'messages': current_messages,
@@ -1644,37 +1944,104 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
             payload['tool_choice'] = 'auto'
 
         try:
-            # Note: requests is blocking. In async function, better use aiohttp or run_in_executor.
-            # But for simplicity, we use blocking requests here.
-            response = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=120)
-            response.raise_for_status()
-            resp_json = response.json()
+            if is_interrupted(): raise TaskInterrupted()
             
-            choice = resp_json['choices'][0]
-            msg = choice['message']
-            finish_reason = choice['finish_reason']
+            # Switch to streaming mode to allow interruption during generation
+            payload['stream'] = True
             
-            # Save assistant message (even if tool call)
-            # Actually OpenAI API requires us to append the message object as is
+            # Use aiohttp for async non-blocking request
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=300) as response:
+                    response.raise_for_status()
+                    
+                    # Manually collect the stream content
+                    full_content = ""
+                    tool_calls_buffer = {}
+                    finish_reason = None
+                    
+                    async for line in response.content:
+                        if is_interrupted(): raise TaskInterrupted()
+                        if not line: continue
+                        
+                        decoded_line = line.decode('utf-8').strip()
+                        if not decoded_line.startswith('data: '): continue
+                        
+                        data_str = decoded_line[6:]
+                        if data_str == '[DONE]': break
+                        
+                        try:
+                            chunk = json.loads(data_str)
+                            if not chunk['choices']: continue
+                            
+                            delta = chunk['choices'][0].get('delta', {})
+                            finish_reason = chunk['choices'][0].get('finish_reason')
+                            
+                            # Accumulate content
+                            if 'content' in delta and delta['content']:
+                                content_chunk = delta['content']
+                                full_content += content_chunk
+                                
+                            # Accumulate tool calls
+                            if 'tool_calls' in delta and delta['tool_calls']:
+                                for tc in delta['tool_calls']:
+                                    idx = tc['index']
+                                    if idx not in tool_calls_buffer:
+                                        tool_calls_buffer[idx] = tc
+                                    else:
+                                        # Merge
+                                        if 'function' in tc:
+                                            if 'name' in tc['function']:
+                                                if 'function' not in tool_calls_buffer[idx]: tool_calls_buffer[idx]['function'] = {}
+                                                tool_calls_buffer[idx]['function']['name'] = tool_calls_buffer[idx]['function'].get('name', '') + tc['function']['name']
+                                            if 'arguments' in tc['function']:
+                                                if 'function' not in tool_calls_buffer[idx]: tool_calls_buffer[idx]['function'] = {}
+                                                tool_calls_buffer[idx]['function']['arguments'] = tool_calls_buffer[idx]['function'].get('arguments', '') + tc['function']['arguments']
+                        except:
+                            pass
+            
+            # Notify User (Optional)
+            if tool_calls_buffer:
+                # await reply_func(f"✅ 执行完成: {func_name}") # Moved to inside loop
+                pass
+
+            # Reconstruct message object for history
+            
+            # Reconstruct message object for history
+            msg = {'role': 'assistant', 'content': full_content}
+            tool_calls = []
+            if tool_calls_buffer:
+                tool_calls = [v for k, v in sorted(tool_calls_buffer.items())]
+                msg['tool_calls'] = tool_calls
+                
+                # Notify User if tool calls are present (but not yet executed)
+                tool_names = [v['function']['name'] for k, v in tool_calls_buffer.items() if 'function' in v and 'name' in v['function']]
+                if tool_names:
+                    tools_str = ", ".join(tool_names)
+                    await reply_func(f"⏳ 正在执行任务: {tools_str}...")
+            
+            # Save assistant message
             current_messages.append(msg)
             
-            content = msg.get('content')
-            tool_calls = msg.get('tool_calls')
-            
-            if content:
-                await reply_func(content)
+            if full_content:
+                await reply_func(full_content)
                 # Save to DB
                 conn = get_db_connection()
                 conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
-                            (conversation_id, 'assistant', content))
+                            (conversation_id, 'assistant', full_content))
                 conn.commit()
                 conn.close()
 
+            # Check if this is a tool use turn
             if not tool_calls:
+                # Normal response, done
                 break
-                
-            # Handle Tool Calls
+            
+            # If we have tool calls, we execute them and then CONTINUE the loop
+            # The next iteration will send the tool outputs back to LLM
+            # and LLM will generate the next response (or more tool calls)
             for tc in tool_calls:
+                if is_interrupted(): raise TaskInterrupted()
+                
                 func_name = tc['function']['name']
                 args_str = tc['function']['arguments']
                 call_id = tc['id']
@@ -1684,11 +2051,16 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
                 except:
                     func_args = {}
                 
+                func_args['_conversation_id'] = conversation_id
+                
                 # Notify User (Optional)
-                # await reply_func(f"🛠️ Executing {func_name}...")
+                await reply_func(f"✅ 执行完成: {func_name}")
                 
                 result = ""
-                if func_name in server_map:
+                core_res = execute_core_tool(func_name, func_args)
+                if core_res is not None:
+                    result = core_res
+                elif func_name in server_map:
                     try:
                         result = await run_mcp_tool(server_map[func_name], func_name, func_args)
                     except Exception as e:
@@ -1743,6 +2115,9 @@ async def headless_chat_turn(conversation_id, user_message, reply_func):
                     "content": str(result)
                 })
 
+        except TaskInterrupted:
+            await reply_func("\n[Task Interrupted by new message]")
+            break
         except Exception as e:
             await reply_func(f"Error: {str(e)}")
             break
@@ -1834,7 +2209,8 @@ def scheduler_loop():
                     api_key = settings.get('api_key')
                     base_url = settings.get('base_url', 'https://api.siliconflow.cn/v1')
                     model = settings.get('model', 'deepseek-ai/DeepSeek-V3.2')
-                    enable_system_control = settings.get('enable_system_control') == 'true'
+                    # Default to True
+                    enable_system_control = settings.get('enable_system_control', 'true') == 'true'
                     
                     if api_key and enable_system_control:
                         headers = {
@@ -1859,7 +2235,7 @@ def scheduler_loop():
                             # But full power is better.
                             # For simplicity, let's assume `execute_skill_function` is enough for "Evolution".
                             
-                            evolve_tools = [{
+                            evolve_tools = CORE_TOOLS_SCHEMA + [{
                                 "type": "function",
                                 "function": {
                                     "name": "execute_skill_function",
@@ -1946,7 +2322,7 @@ def scheduler_loop():
                                     }
                                     
                                     try:
-                                        resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=120)
+                                        resp = requests.post(f"{base_url}/chat/completions", headers=headers, json=payload, timeout=300)
                                         resp_json = resp.json()
                                         
                                         if 'choices' in resp_json and resp_json['choices']:
@@ -1962,30 +2338,37 @@ def scheduler_loop():
                                                     call_id = tc['id']
                                                     
                                                     res_str = ""
-                                                if func_name == 'execute_skill_function':
                                                     try:
-                                                        args = json.loads(args_str)
-                                                        res_str = skill_manager.execute_skill_function(
-                                                            args.get('skill_name'), args.get('file_name'), 
-                                                            args.get('function_name'), args.get('kwargs', {})
-                                                        )
-                                                        success = True # If we executed code, assume some success
-                                                    except Exception as e:
-                                                        res_str = f"Error: {e}"
-                                                elif func_name == 'protocol_remember':
-                                                    try:
-                                                        args = json.loads(args_str)
-                                                        saved_path = protocol_brain.remember(args.get('key'), args.get('value'))
-                                                        res_str = f"Successfully remembered: {args.get('key')} = {args.get('value')}. Saved to {saved_path}"
-                                                        success = True
-                                                    except Exception as e: res_str = str(e)
-                                                elif func_name == 'protocol_learn_experience':
-                                                    try:
-                                                        args = json.loads(args_str)
-                                                        saved_path = protocol_brain.learn_experience(args.get('problem'), args.get('solution'), args.get('tags'))
-                                                        res_str = f"Experience learned and saved to {saved_path}."
-                                                        success = True
-                                                    except Exception as e: res_str = str(e)
+                                                        func_args = json.loads(args_str)
+                                                    except: func_args = {}
+                                                    
+                                                    core_res = execute_core_tool(func_name, func_args)
+                                                    if core_res is not None:
+                                                        res_str = core_res
+                                                    elif func_name == 'execute_skill_function':
+                                                        try:
+                                                            args = func_args
+                                                            res_str = skill_manager.execute_skill_function(
+                                                                args.get('skill_name'), args.get('file_name'), 
+                                                                args.get('function_name'), args.get('kwargs', {})
+                                                            )
+                                                            success = True # If we executed code, assume some success
+                                                        except Exception as e:
+                                                            res_str = f"Error: {e}"
+                                                    elif func_name == 'protocol_remember':
+                                                        try:
+                                                            args = json.loads(args_str)
+                                                            saved_path = protocol_brain.remember(args.get('key'), args.get('value'))
+                                                            res_str = f"Successfully remembered: {args.get('key')} = {args.get('value')}. Saved to {saved_path}"
+                                                            success = True
+                                                        except Exception as e: res_str = str(e)
+                                                    elif func_name == 'protocol_learn_experience':
+                                                        try:
+                                                            args = json.loads(args_str)
+                                                            saved_path = protocol_brain.learn_experience(args.get('problem'), args.get('solution'), args.get('tags'))
+                                                            res_str = f"Experience learned and saved to {saved_path}."
+                                                            success = True
+                                                        except Exception as e: res_str = str(e)
                                                 
                                                 messages.append({
                                                     "role": "tool",
@@ -2019,7 +2402,7 @@ def scheduler_loop():
                                     conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
                                                 (last_conv['conversation_id'], 'assistant', notify_msg))
                                     conn.commit()
-                                    
+                                
                         finally:
                             loop.close()
                     
