@@ -12,6 +12,7 @@
 *   **Custom Skill System**: Extend AI capabilities by writing simple Python functions. Just place `.py` files or `.zip` archives into the `skills` folder, and the AI can immediately use them as tools.
 *   **Built-in CMD Control**: Pre-installed Windows CMD control skill, allowing the AI to execute system commands and open applications.
 *   **Feishu Robot Integration**: Supports configuring a Feishu robot to access AI capabilities within Feishu chat.
+*   **QQ Bot Integration**: Supports OneBot V11 (NapCatQQ/go-cqhttp) for QQ integration.
 *   **Skill Management**: Upload, view lists, and delete skills directly in the settings interface. Supports organizing skills into folders (packages).
 *   **Conversation Management**: Supports creating multiple conversations, switching between different conversations, and deleting old chat records.
 *   **Flexible Configuration**: Easily configure your Large Language Model provider (compatible with OpenAI interface), API key, and model name.
@@ -100,9 +101,16 @@ Skills are Python functions that the AI can call.
 3.  Fill the generated Webhook URL into the Feishu backend.
 4.  Now you can talk to the AI directly in Feishu.
 
+### QQ Bot (OneBot V11)
+
+1.  Go to **Settings** -> **Social Platform Integration** -> **QQ**.
+2.  Configure the **HTTP API URL** (e.g., `http://127.0.0.1:3000`).
+3.  Configure your OneBot client (NapCatQQ/go-cqhttp) to send events to the **Webhook URL** shown in the settings.
+
 ## Project Structure
 
 *   `app.py`: Flask main program and API interface.
+*   `qq_utils.py`: **QQ Bot Implementation** (OneBot V11).
 *   `skill_manager.py`: Core logic for loading and executing Python skills.
 *   `skills/`: Directory for storing custom skills.
 *   `static/`: CSS style and JavaScript script files.

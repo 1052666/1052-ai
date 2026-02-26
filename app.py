@@ -14,6 +14,8 @@ import inspect
 import webbrowser
 import uuid
 from telegram_utils import TelegramBot
+from feishu_utils import FeishuBot
+from qq_utils import QQBot
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context
 from mcp import ClientSession, StdioServerParameters
@@ -760,6 +762,110 @@ async def get_all_mcp_tools():
             print(f"Error listing tools for server {server_dict['name']}: {e}")
             
     return all_tools, server_map
+
+@app.route('/api/qq/event', methods=['POST'])
+def qq_event():
+    data = request.json
+    # print(f"QQ Event: {json.dumps(data)}") # Debug
+
+    # OneBot V11 Event Handling
+    post_type = data.get('post_type')
+    
+    # 1. Message Event
+    if post_type == 'message':
+        message_type = data.get('message_type') # private / group
+        user_id = data.get('user_id')
+        group_id = data.get('group_id')
+        raw_message = data.get('raw_message', '')
+        
+        # Filter self messages? OneBot usually doesn't send self messages unless configured.
+        
+        # Async processing
+        threading.Thread(target=process_qq_message_thread, 
+                        args=(message_type, user_id, group_id, raw_message)).start()
+                        
+    # 2. Meta Event (Heartbeat) - Ignore
+    
+    return jsonify({"status": "ok"})
+
+def process_qq_message_thread(message_type, user_id, group_id, raw_message):
+    with app.app_context():
+        try:
+            # Load settings
+            conn = get_db_connection()
+            settings = {row['key']: row['value'] for row in conn.execute('SELECT * FROM settings')}
+            conn.close()
+            
+            http_api = settings.get('qq_http_api')
+            access_token = settings.get('qq_access_token')
+            secret = settings.get('qq_secret')
+            
+            if not http_api:
+                print("QQ HTTP API URL not configured.")
+                return
+
+            bot = QQBot(http_api, access_token, secret)
+            
+            # Identify Conversation
+            # For Group: QQ_Group_{group_id}
+            # For Private: QQ_User_{user_id}
+            if message_type == 'group':
+                conv_title = f"QQ_Group_{group_id}"
+                sender_desc = f"QQ Group {group_id} User {user_id}"
+            else:
+                conv_title = f"QQ_User_{user_id}"
+                sender_desc = f"QQ User {user_id}"
+                
+            # Connect DB again for transaction
+            conn = get_db_connection()
+            
+            # Check for /new command
+            if raw_message.strip() == "/new":
+                cursor = conn.execute('INSERT INTO conversations (title) VALUES (?)', (conv_title,))
+                conversation_id = cursor.lastrowid
+                conn.commit()
+                
+                if message_type == 'group':
+                    bot.send_group_msg(group_id, "✅ 已开启新会话，上下文已重置。")
+                else:
+                    bot.send_private_msg(user_id, "✅ 已开启新会话，上下文已重置。")
+                conn.close()
+                return
+
+            # Find or Create Conversation
+            conv = conn.execute('SELECT id FROM conversations WHERE title = ? ORDER BY created_at DESC LIMIT 1', (conv_title,)).fetchone()
+            
+            if not conv:
+                cursor = conn.execute('INSERT INTO conversations (title) VALUES (?)', (conv_title,))
+                conversation_id = cursor.lastrowid
+            else:
+                conversation_id = conv['id']
+                
+            # Save User Message
+            conn.execute('INSERT INTO messages (conversation_id, role, content) VALUES (?, ?, ?)',
+                        (conversation_id, 'user', raw_message))
+            conn.commit()
+            conn.close() # Close to avoid locking during long LLM call
+            
+            # Define Reply Function
+            async def reply_func(text):
+                if message_type == 'group':
+                    bot.send_group_msg(group_id, text)
+                else:
+                    bot.send_private_msg(user_id, text)
+
+            # Call LLM
+            # Run async headless_chat_turn in a new loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                loop.run_until_complete(headless_chat_turn(str(conversation_id), raw_message, reply_func))
+            finally:
+                loop.close()
+
+        except Exception as e:
+            print(f"Error processing QQ message: {e}")
 
 # --- Feishu Integration ---
 @app.route('/api/feishu/event', methods=['POST'])

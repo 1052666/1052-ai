@@ -43,6 +43,8 @@ AI 不再是被动的工具，它具备了自我思考与成长的能力。
 *   **Feishu (飞书) 机器人**：配置 App ID 和 Secret，即可在飞书群或私聊中与 AI 互动。
 *   **Telegram 机器人**：支持 Telegram Bot API，随时随地远程控制您的电脑。
     *   **指令支持**：发送 `/new` 即可重置当前会话记忆。
+*   **QQ 机器人 (OneBot V11)**：支持通过 NapCatQQ 或 go-cqhttp 接入，让 AI 成为您的 QQ 好友或群管家。
+    *   **指令支持**：发送 `/new` 即可重置当前会话记忆。
 
 ### ⏰ 智能调度与提醒
 *   **精准时间感知**：修复了时区问题，AI 现在能准确获取系统本地时间（UTC+8 等）。
@@ -89,6 +91,7 @@ AI 不再是被动的工具，它具备了自我思考与成长的能力。
 *   **社交接入**：
     *   **Feishu**：填入 App ID 和 App Secret，配置事件订阅请求地址为 `http://your-ip:10052/api/feishu/event`。
     *   **Telegram**：填入 Bot Token，即可启动 TG 机器人。
+    *   **QQ**：配置 HTTP API 地址（如 `http://127.0.0.1:3000`），并在 OneBot 客户端中设置事件上报地址为 `http://your-ip:10052/api/qq/event`。
 
 ### 🧠 记忆与进化
 *   **记忆**：直接告诉 AI “我喜欢 Python”，它会调用 `protocol_remember` 记住。
@@ -106,6 +109,7 @@ AI 不再是被动的工具，它具备了自我思考与成长的能力。
 *   `app.py`: 核心服务端源码。
 *   `core_skills.py`: **核心技能库**（原生系统控制、文件操作、路径解析）。
 *   `telegram_utils.py`: Telegram 机器人实现。
+*   `qq_utils.py`: **QQ 机器人实现** (OneBot V11)。
 *   `feishu_utils.py` (集成在 app.py): 飞书机器人实现。
 *   `skills/`: **技能目录**（用户或 AI 生成的扩展脚本）。
 *   `1052_data/`: 存储记忆、经验和用户数据。

@@ -383,6 +383,10 @@ textarea:focus {
     background: linear-gradient(135deg, #2aabee 0%, #229ed9 100%);
 }
 
+.qq-icon {
+    background: linear-gradient(135deg, #000000 0%, #333333 100%);
+}
+
 .platform-info {
     flex: 1;
 }

@@ -182,6 +182,23 @@
                                         </button>
                                     </div>
                                 </div>
+
+                                <!-- QQ Card -->
+                                <div class="platform-card">
+                                    <div class="platform-icon qq-icon">
+                                        <i class="fab fa-qq"></i>
+                                    </div>
+                                    <div class="platform-info">
+                                        <h4>QQ (OneBot V11)</h4>
+                                        <p>通过 NapCatQQ 或 go-cqhttp 接入。</p>
+                                        <span class="status-badge" id="qq-status">未配置</span>
+                                    </div>
+                                    <div class="platform-action">
+                                        <button class="icon-btn config-social-btn" data-target="qq-modal">
+                                            <i class="fas fa-cog"></i> 配置
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -367,6 +384,70 @@
         </div>
     </div>
 
+    <!-- QQ Modal -->
+    <div id="qq-modal" class="modal">
+        <div class="modal-content" style="width: 600px;">
+            <div class="modal-header">
+                <h3>QQ 机器人配置 (OneBot V11)</h3>
+                <span class="close-modal" data-target="qq-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-tabs">
+                    <div class="modal-tab active" data-tab="qq-config">配置</div>
+                    <div class="modal-tab" data-tab="qq-guide">接入指南</div>
+                </div>
+
+                <div id="qq-config" class="tab-content active">
+                    <div class="form-group">
+                        <label for="qq-http-api">HTTP API 地址</label>
+                        <input type="text" id="qq-http-api" placeholder="http://127.0.0.1:3000" autocomplete="off">
+                        <p class="help-text">NapCatQQ 或 go-cqhttp 监听的 HTTP API 地址。</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="qq-access-token">Access Token (可选)</label>
+                        <input type="password" id="qq-access-token" placeholder="..." autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="qq-secret">Secret (可选)</label>
+                        <input type="password" id="qq-secret" placeholder="..." autocomplete="off">
+                    </div>
+                    
+                    <div class="form-group" style="background: var(--bg-secondary); padding: 15px; border-radius: 8px; margin-top: 15px;">
+                        <label style="margin-bottom: 5px; display: block;">事件上报地址 (Webhook URL)</label>
+                        <div style="display: flex; gap: 10px; align-items: center;">
+                            <input type="text" id="qq-webhook-url" readonly style="background: #e0e0e0; color: #555; cursor: default; flex-grow: 1;">
+                            <button class="secondary-btn" id="copy-qq-webhook-btn">复制</button>
+                        </div>
+                        <p class="help-text" style="margin-top: 8px;">请将此地址填入 NapCatQQ 或 go-cqhttp 的 <code>post_urls</code> (HTTP 上报) 配置中。</p>
+                    </div>
+
+                    <div style="text-align: right; margin-top: 20px;">
+                        <button id="save-qq-btn" class="primary-btn">保存 QQ 配置</button>
+                    </div>
+                </div>
+
+                <div id="qq-guide" class="tab-content">
+                    <div class="guide-step">
+                        <strong>1. 安装 OneBot 客户端</strong>
+                        推荐使用 <a href="https://github.com/NapNeko/NapCatQQ" target="_blank" style="color: var(--accent-color);">NapCatQQ</a> (基于 NTQQ，更稳定)。
+                    </div>
+                    <div class="guide-step">
+                        <strong>2. 配置 HTTP 交互</strong>
+                        在 NapCatQQ 的配置文件 (<code>napcat.json</code>) 中：
+                        <ul style="margin: 5px 0 5px 20px;">
+                            <li>启用 <code>http</code> 并在 <code>port</code> 设置端口 (如 3000)，填入本页面的 <strong>HTTP API 地址</strong>。</li>
+                            <li>启用 <code>http_webhook</code> 并将本页面的 <strong>Webhook URL</strong> 填入 <code>post_urls</code>。</li>
+                        </ul>
+                    </div>
+                    <div class="guide-step">
+                        <strong>3. 重启生效</strong>
+                        保存配置后，重启 1052 AI 和 NapCatQQ。
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/common.js"></script>
     <script>
         // Custom UI Helpers (Implemented in common.js)
@@ -377,6 +458,7 @@
             function updateSocialStatus(settings) {
                 const feishuStatus = document.getElementById('feishu-status');
                 const telegramStatus = document.getElementById('telegram-status');
+                const qqStatus = document.getElementById('qq-status');
                 
                 if (settings.feishu_app_id && settings.feishu_app_secret) {
                     feishuStatus.textContent = '已配置';
@@ -392,6 +474,14 @@
                 } else {
                     telegramStatus.textContent = '未配置';
                     telegramStatus.classList.remove('configured');
+                }
+
+                if (settings.qq_http_api) {
+                    qqStatus.textContent = '已配置';
+                    qqStatus.classList.add('configured');
+                } else {
+                    qqStatus.textContent = '未配置';
+                    qqStatus.classList.remove('configured');
                 }
             }
 
@@ -449,11 +539,16 @@
                 document.getElementById('feishu-app-secret').value = settings.feishu_app_secret || '';
                 document.getElementById('feishu-verification-token').value = settings.feishu_verification_token || '';
                 document.getElementById('telegram-token').value = settings.telegram_token || '';
+                
+                document.getElementById('qq-http-api').value = settings.qq_http_api || '';
+                document.getElementById('qq-access-token').value = settings.qq_access_token || '';
+                document.getElementById('qq-secret').value = settings.qq_secret || '';
 
                 // Calculate Webhook URL
                 const protocol = window.location.protocol;
                 const host = window.location.host;
                 document.getElementById('feishu-webhook-url').value = `${protocol}//${host}/api/feishu/event`;
+                document.getElementById('qq-webhook-url').value = `${protocol}//${host}/api/qq/event`;
 
                 // Update Social Status Badges
                 updateSocialStatus(settings);
@@ -1083,7 +1178,8 @@
                     updateSocialStatus({
                         feishu_app_id: document.getElementById('feishu-app-id').value.trim(),
                         feishu_app_secret: document.getElementById('feishu-app-secret').value.trim(),
-                        telegram_token: telegramToken
+                        telegram_token: telegramToken,
+                        qq_http_api: document.getElementById('qq-http-api').value.trim()
                     });
                     
                     document.getElementById('telegram-modal').style.display = 'none';
@@ -1093,10 +1189,55 @@
                     showCustomAlert('保存失败。');
                 }
             });
+
+            document.getElementById('save-qq-btn').addEventListener('click', async () => {
+                const httpApi = document.getElementById('qq-http-api').value.trim();
+                const accessToken = document.getElementById('qq-access-token').value.trim();
+                const secret = document.getElementById('qq-secret').value.trim();
+
+                try {
+                    await fetch('/api/settings', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            qq_http_api: httpApi,
+                            qq_access_token: accessToken,
+                            qq_secret: secret
+                        })
+                    });
+                    
+                    updateSocialStatus({
+                        feishu_app_id: document.getElementById('feishu-app-id').value.trim(),
+                        feishu_app_secret: document.getElementById('feishu-app-secret').value.trim(),
+                        telegram_token: document.getElementById('telegram-token').value.trim(),
+                        qq_http_api: httpApi
+                    });
+                    
+                    document.getElementById('qq-modal').style.display = 'none';
+                    await showCustomAlert('QQ 配置已保存');
+                } catch (error) {
+                    console.error('Failed to save qq settings:', error);
+                    showCustomAlert('保存失败。');
+                }
+            });
             
-            // Copy Webhook URL
+            // Copy Webhook URL (Feishu)
             document.getElementById('copy-webhook-btn').addEventListener('click', () => {
                 const urlInput = document.getElementById('feishu-webhook-url');
+                urlInput.select();
+                document.execCommand('copy'); // Fallback
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(urlInput.value).then(() => {
+                        showCustomAlert('已复制到剪贴板');
+                    });
+                } else {
+                    showCustomAlert('已复制 (Legacy)');
+                }
+            });
+
+            // Copy Webhook URL (QQ)
+            document.getElementById('copy-qq-webhook-btn').addEventListener('click', () => {
+                const urlInput = document.getElementById('qq-webhook-url');
                 urlInput.select();
                 document.execCommand('copy'); // Fallback
                 if (navigator.clipboard) {
