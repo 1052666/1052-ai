@@ -13,7 +13,7 @@
 
 | 💻 电脑端运行效果 | 📱 手机端运行效果 | 🧬 自我进化运行效果 |
 | :---: | :---: | :---: |
-| <img src="TP/1.jpg" width="300"> | <img src="TP/2.jpg" width="300"> | <img src="TP/3.jpg" width="300"> |
+| <img src="tp/1.jpg" width="300"> | <img src="tp/2.jpg" width="300"> | <img src="tp/3.jpg" width="300"> |
 
 ---
 
